@@ -180,6 +180,42 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i id="toast-icon" class="fas me-2"></i>
+                <strong id="toast-title" class="me-auto">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div id="toast-body" class="toast-body">
+                <!-- Toast message will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalLabel">
+                        <i id="confirm-icon" class="fas fa-question-circle me-2"></i>
+                        <span id="confirm-title">Confirm Action</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="confirm-message">Are you sure you want to perform this action?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-action-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentFiles = [];
@@ -189,6 +225,74 @@
         let isScanning = false;
         let scannerRefreshInterval;
         let filesRefreshInterval;
+
+        // Toast notification function
+        function showToast(type, title, message) {
+            const toast = document.getElementById('toast');
+            const toastIcon = document.getElementById('toast-icon');
+            const toastTitle = document.getElementById('toast-title');
+            const toastBody = document.getElementById('toast-body');
+            
+            // Set icon and color based on type
+            let iconClass = 'fa-info-circle';
+            let bgClass = 'bg-primary';
+            
+            switch(type) {
+                case 'success':
+                    iconClass = 'fa-check-circle';
+                    bgClass = 'bg-success';
+                    break;
+                case 'error':
+                    iconClass = 'fa-exclamation-circle';
+                    bgClass = 'bg-danger';
+                    break;
+                case 'warning':
+                    iconClass = 'fa-exclamation-triangle';
+                    bgClass = 'bg-warning';
+                    break;
+                case 'info':
+                default:
+                    iconClass = 'fa-info-circle';
+                    bgClass = 'bg-primary';
+                    break;
+            }
+            
+            // Update toast content
+            toastIcon.className = `fas ${iconClass} me-2`;
+            toastTitle.textContent = title;
+            toastBody.textContent = message;
+            
+            // Update toast background
+            toast.className = `toast ${bgClass} text-white`;
+            
+            // Show the toast
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+        }
+
+        // Confirmation modal function
+        function showConfirm(title, message, icon, action) {
+            const confirmModal = document.getElementById('confirmModal');
+            const confirmIcon = document.getElementById('confirm-icon');
+            const confirmTitle = document.getElementById('confirm-title');
+            const confirmMessage = document.getElementById('confirm-message');
+            const confirmBtn = document.getElementById('confirm-action-btn');
+            
+            // Update modal content
+            confirmIcon.className = `fas ${icon} me-2`;
+            confirmTitle.textContent = title;
+            confirmMessage.textContent = message;
+            
+            // Set up the action button
+            confirmBtn.onclick = () => {
+                action();
+                bootstrap.Modal.getInstance(confirmModal).hide();
+            };
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(confirmModal);
+            modal.show();
+        }
 
         // Load data on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -419,10 +523,10 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Scan failed: ' + data.error);
+                    showToast('error', 'Scan Failed', 'Scan failed: ' + data.error);
                 } else {
                     const pageText = data.pages === 1 ? 'page' : 'pages';
-                    alert(`Scan completed successfully! Scanned ${data.pages} ${pageText}.`);
+                    showToast('success', 'Scan Completed', `Scan completed successfully! Scanned ${data.pages} ${pageText}.`);
                     // Add a delay to ensure files are fully written before refreshing
                     setTimeout(() => {
                         loadFiles();
@@ -431,7 +535,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Scan failed: ' + error.message);
+                showToast('error', 'Scan Failed', 'Scan failed: ' + error.message);
             })
             .finally(() => {
                 button.disabled = false;
@@ -451,34 +555,40 @@
         }
 
         function deleteFile(filename) {
-            if (confirm('Are you sure you want to delete this file?')) {
-                // Immediately remove the file from the UI for better responsiveness
-                currentFiles = currentFiles.filter(file => file.name !== filename);
-                updateFilesUI(currentFiles);
-                
-                fetch(`/api/files/${filename}`, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        alert('Delete failed: ' + data.error);
+            showConfirm(
+                'Delete File',
+                `Are you sure you want to delete "${filename}"?`,
+                'fa-trash',
+                () => {
+                    // Immediately remove the file from the UI for better responsiveness
+                    currentFiles = currentFiles.filter(file => file.name !== filename);
+                    updateFilesUI(currentFiles);
+                    
+                    fetch(`/api/files/${filename}`, {
+                        method: 'DELETE'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showToast('error', 'Delete Failed', 'Delete failed: ' + data.error);
+                            // Reload files if deletion failed
+                            loadFiles();
+                        } else {
+                            showToast('success', 'File Deleted', 'File deleted successfully!');
+                            // Double-check with server to ensure UI is in sync
+                            setTimeout(() => {
+                                loadFiles();
+                            }, 100);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showToast('error', 'Delete Failed', 'Delete failed: ' + error.message);
                         // Reload files if deletion failed
                         loadFiles();
-                    } else {
-                        // Double-check with server to ensure UI is in sync
-                        setTimeout(() => {
-                            loadFiles();
-                        }, 100);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Delete failed: ' + error.message);
-                    // Reload files if deletion failed
-                    loadFiles();
-                });
-            }
+                    });
+                }
+            );
         }
 
         function deleteCurrentFile() {
@@ -490,37 +600,42 @@
 
         function clearAllFiles() {
             if (currentFiles.length === 0) {
-                alert('No files to clear');
+                showToast('warning', 'No Files', 'No files to clear');
                 return;
             }
 
-            if (confirm(`Are you sure you want to delete all ${currentFiles.length} files?`)) {
-                // Store the files to delete before clearing the UI
-                const filesToDelete = [...currentFiles];
-                
-                // Immediately clear the UI for better responsiveness
-                currentFiles = [];
-                updateFilesUI(currentFiles);
-                
-                const deletePromises = filesToDelete.map(file => 
-                    fetch(`/api/files/${file.name}`, { method: 'DELETE' })
-                );
+            showConfirm(
+                'Delete All Files',
+                `Are you sure you want to delete all ${currentFiles.length} files?`,
+                'fa-trash-alt',
+                () => {
+                    // Store the files to delete before clearing the UI
+                    const filesToDelete = [...currentFiles];
+                    
+                    // Immediately clear the UI for better responsiveness
+                    currentFiles = [];
+                    updateFilesUI(currentFiles);
+                    
+                    const deletePromises = filesToDelete.map(file => 
+                        fetch(`/api/files/${file.name}`, { method: 'DELETE' })
+                    );
 
-                Promise.all(deletePromises)
-                    .then(() => {
-                        alert('All files deleted successfully!');
-                        // Double-check with server to ensure UI is in sync
-                        setTimeout(() => {
+                    Promise.all(deletePromises)
+                        .then(() => {
+                            showToast('success', 'All Files Deleted', 'All files deleted successfully!');
+                            // Double-check with server to ensure UI is in sync
+                            setTimeout(() => {
+                                loadFiles();
+                            }, 100);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            showToast('error', 'Delete Failed', 'Failed to delete some files');
+                            // Reload files if deletion failed
                             loadFiles();
-                        }, 100);
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Failed to delete some files');
-                        // Reload files if deletion failed
-                        loadFiles();
-                    });
-            }
+                        });
+                }
+            );
         }
 
         function formatFileSize(bytes) {
