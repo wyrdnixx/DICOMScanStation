@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
 	"os"
 	"os/exec"
 	"sort"
@@ -13,7 +17,10 @@ import (
 
 	"DICOMScanStation/config"
 
+	"github.com/golang/freetype"
+	"github.com/golang/freetype/truetype"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 type ScannerInfo struct {
@@ -356,8 +363,119 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 		return nil, fmt.Errorf("scan completed but no files were created")
 	}
 
+	// Add header to each scanned image
+	sm.logger.Info("Adding headers to scanned images...")
+	for _, filename := range filenames {
+		inputPath := fmt.Sprintf("%s/%s", sm.config.TempFilesDir, filename)
+		tempPath := fmt.Sprintf("%s/%s.tmp", sm.config.TempFilesDir, filename)
+
+		// Add header to the image
+		err := sm.addHeaderToImage(inputPath, tempPath)
+		if err != nil {
+			sm.logger.Errorf("Failed to add header to %s: %v", filename, err)
+			continue
+		}
+
+		// Replace the original file with the one that has the header
+		err = os.Rename(tempPath, inputPath)
+		if err != nil {
+			sm.logger.Errorf("Failed to replace file %s: %v", filename, err)
+			// Clean up temp file
+			os.Remove(tempPath)
+			continue
+		}
+
+		sm.logger.Debugf("Added header to %s", filename)
+	}
+
 	sm.logger.Infof("Document scanned successfully: %d pages", len(filenames))
 	return filenames, nil
+}
+
+// addHeaderToImage adds a header text to the top of an image
+func (sm *ScannerManager) addHeaderToImage(inputPath, outputPath string) error {
+	// Open the input image
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input image: %v", err)
+	}
+	defer inputFile.Close()
+
+	// Decode the image
+	img, _, err := image.Decode(inputFile)
+	if err != nil {
+		return fmt.Errorf("failed to decode image: %v", err)
+	}
+
+	// Get image bounds
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Create a new image with header space
+	headerHeight := 60 // Height for the header
+	newHeight := height + headerHeight
+	newImg := image.NewRGBA(image.Rect(0, 0, width, newHeight))
+
+	// Fill the header area with light orange background
+	lightOrange := color.RGBA{255, 218, 185, 255} // Light orange color
+	for y := 0; y < headerHeight; y++ {
+		for x := 0; x < width; x++ {
+			newImg.Set(x, y, lightOrange)
+		}
+	}
+
+	// Copy the original image below the header
+	draw.Draw(newImg, image.Rect(0, headerHeight, width, newHeight), img, image.Point{0, 0}, draw.Src)
+
+	// Load the font
+	fontBytes := goregular.TTF
+	font, err := truetype.Parse(fontBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse font: %v", err)
+	}
+
+	// Create font context
+	c := freetype.NewContext()
+	c.SetDPI(72)
+	c.SetFont(font)
+	c.SetFontSize(18)
+	c.SetClip(newImg.Bounds())
+	c.SetDst(newImg)
+	c.SetSrc(image.NewUniform(color.RGBA{139, 0, 0, 255})) // Dark red color
+
+	// Add the text
+	text := "Eingescanntes Paper-Dokument : Darf nicht diagnostisch verwendet werden."
+
+	// Calculate text width to center it
+	textBounds, err := c.DrawString(text, freetype.Pt(0, 0))
+	if err != nil {
+		return fmt.Errorf("failed to measure text: %v", err)
+	}
+
+	// Calculate center position
+	textWidth := textBounds.X.Round()
+	centerX := (width - textWidth) / 2
+	pt := freetype.Pt(centerX, 45) // Position the text centered and slightly lower
+	_, err = c.DrawString(text, pt)
+	if err != nil {
+		return fmt.Errorf("failed to draw text: %v", err)
+	}
+
+	// Save the new image
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer outputFile.Close()
+
+	// Encode as JPEG
+	err = jpeg.Encode(outputFile, newImg, &jpeg.Options{Quality: 95})
+	if err != nil {
+		return fmt.Errorf("failed to encode image: %v", err)
+	}
+
+	return nil
 }
 
 func (sm *ScannerManager) GetScannerCapabilities(device string) (map[string]interface{}, error) {
