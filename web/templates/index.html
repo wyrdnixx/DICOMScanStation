@@ -452,6 +452,10 @@
 
         function deleteFile(filename) {
             if (confirm('Are you sure you want to delete this file?')) {
+                // Immediately remove the file from the UI for better responsiveness
+                currentFiles = currentFiles.filter(file => file.name !== filename);
+                updateFilesUI(currentFiles);
+                
                 fetch(`/api/files/${filename}`, {
                     method: 'DELETE'
                 })
@@ -459,13 +463,20 @@
                 .then(data => {
                     if (data.error) {
                         alert('Delete failed: ' + data.error);
-                    } else {
+                        // Reload files if deletion failed
                         loadFiles();
+                    } else {
+                        // Double-check with server to ensure UI is in sync
+                        setTimeout(() => {
+                            loadFiles();
+                        }, 100);
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
                     alert('Delete failed: ' + error.message);
+                    // Reload files if deletion failed
+                    loadFiles();
                 });
             }
         }
@@ -484,18 +495,30 @@
             }
 
             if (confirm(`Are you sure you want to delete all ${currentFiles.length} files?`)) {
-                const deletePromises = currentFiles.map(file => 
+                // Store the files to delete before clearing the UI
+                const filesToDelete = [...currentFiles];
+                
+                // Immediately clear the UI for better responsiveness
+                currentFiles = [];
+                updateFilesUI(currentFiles);
+                
+                const deletePromises = filesToDelete.map(file => 
                     fetch(`/api/files/${file.name}`, { method: 'DELETE' })
                 );
 
                 Promise.all(deletePromises)
                     .then(() => {
                         alert('All files deleted successfully!');
-                        loadFiles();
+                        // Double-check with server to ensure UI is in sync
+                        setTimeout(() => {
+                            loadFiles();
+                        }, 100);
                     })
                     .catch(error => {
                         console.error('Error:', error);
                         alert('Failed to delete some files');
+                        // Reload files if deletion failed
+                        loadFiles();
                     });
             }
         }

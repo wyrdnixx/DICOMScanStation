@@ -230,7 +230,7 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 
 	// Set multi-page options first
 	if options.MultiPage {
-		//args = append(args, "--batch-start=1", "--batch-increment=1", "--batch-count=50")
+
 		args = append(args, "--batch-start=1", "--batch-increment=1")
 		// Use batch mode for multi-page scanning - use proper batch pattern
 		batchPattern := sm.config.TempFilesDir + "/" + baseFilename + "_%d.jpg"
