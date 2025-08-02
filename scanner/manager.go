@@ -25,9 +25,9 @@ type ScannerInfo struct {
 }
 
 type ScanOptions struct {
-	MultiPage bool `json:"multi_page"`
-	Duplex    bool `json:"duplex"`
-	Color     bool `json:"color"`
+	MultiPage  bool `json:"multi_page"`
+	Duplex     bool `json:"duplex"`
+	Color      bool `json:"color"`
 	Resolution int  `json:"resolution"`
 }
 
@@ -228,24 +228,29 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 		args = append(args, "--mode", "Gray")
 	}
 
-	// Set duplex if supported
+	// Set multi-page options first
+	if options.MultiPage {
+		//args = append(args, "--batch-start=1", "--batch-increment=1", "--batch-count=50")
+		args = append(args, "--batch-start=1", "--batch-increment=1")
+		// Use batch mode for multi-page scanning - use proper batch pattern
+		batchPattern := sm.config.TempFilesDir + "/" + baseFilename + "_%d.jpg"
+		sm.logger.Debugf("Batch pattern: %s", batchPattern)
+		args = append(args, "--batch="+batchPattern)
+	} else {
+		// Single page scan
+		args = append(args, "-o", fmt.Sprintf("%s.jpg", filepath))
+	}
+
+	// Set duplex if supported (after batch options)
 	if options.Duplex {
 		args = append(args, "--source", "ADF Duplex")
 	} else {
 		args = append(args, "--source", "ADF Front")
 	}
 
-	// Set multi-page options
-	if options.MultiPage {
-		args = append(args, "--batch-start=1", "--batch-increment=1")
-		// Use batch mode for multi-page scanning
-		args = append(args, "--batch", fmt.Sprintf("%s_%%d.jpg", filepath))
-	} else {
-		// Single page scan
-		args = append(args, "-o", fmt.Sprintf("%s.jpg", filepath))
-	}
-
 	// Use scanimage to scan document
+
+	sm.logger.Infof("Scan command: scanimage %v", args)
 	cmd := exec.Command("scanimage", args...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(sm.config.ScannerTimeout)*time.Millisecond)
@@ -257,40 +262,90 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	sm.logger.Infof("Starting scan with options: multi_page=%v, duplex=%v, color=%v, resolution=%d", 
+	sm.logger.Infof("Starting scan with options: multi_page=%v, duplex=%v, color=%v, resolution=%d",
 		options.MultiPage, options.Duplex, options.Color, options.Resolution)
+	sm.logger.Debugf("Scan command: scanimage %v", args)
 
 	if err := cmd.Run(); err != nil {
 		errorMsg := stderr.String()
 		if errorMsg == "" {
 			errorMsg = err.Error()
 		}
-		return nil, fmt.Errorf("scan failed: %s", errorMsg)
+		sm.logger.Errorf("Scan failed: %s \n %s", errorMsg, cmd.String())
+		return nil, fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
 	}
 
 	// Wait a moment to ensure files are fully written and flushed to disk
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Collect generated filenames
 	var filenames []string
 	if options.MultiPage {
 		// Look for batch files
 		pageNum := 1
-		for {
+		maxPages := 50 // Safety limit to prevent infinite loop
+		sm.logger.Debugf("Looking for batch files with base: %s", baseFilename)
+		for pageNum <= maxPages {
 			filename := fmt.Sprintf("%s_%d.jpg", baseFilename, pageNum)
 			fullPath := fmt.Sprintf("%s/%s", sm.config.TempFilesDir, filename)
-			
+
 			if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+				sm.logger.Debugf("File not found: %s", fullPath)
 				break
 			}
 			filenames = append(filenames, filename)
+			sm.logger.Debugf("Found page %d: %s", pageNum, filename)
 			pageNum++
+		}
+
+		// For duplex scanning, we might need to look for additional patterns
+		if options.Duplex && len(filenames) == 0 {
+			// Try alternative naming patterns for duplex
+			pageNum = 1
+			for pageNum <= maxPages {
+				// Try different naming patterns that some scanners use for duplex
+				patterns := []string{
+					fmt.Sprintf("%s_%d.jpg", baseFilename, pageNum),
+					fmt.Sprintf("%s_front_%d.jpg", baseFilename, pageNum),
+					fmt.Sprintf("%s_back_%d.jpg", baseFilename, pageNum),
+					fmt.Sprintf("%s_%d_front.jpg", baseFilename, pageNum),
+					fmt.Sprintf("%s_%d_back.jpg", baseFilename, pageNum),
+				}
+
+				found := false
+				for _, pattern := range patterns {
+					fullPath := fmt.Sprintf("%s/%s", sm.config.TempFilesDir, pattern)
+					if _, err := os.Stat(fullPath); err == nil {
+						filenames = append(filenames, pattern)
+						sm.logger.Debugf("Found duplex page %d: %s", pageNum, pattern)
+						found = true
+					}
+				}
+
+				if !found {
+					break
+				}
+				pageNum++
+			}
+		}
+
+		// If still no files found, list all files in temp directory for debugging
+		if len(filenames) == 0 {
+			entries, err := os.ReadDir(sm.config.TempFilesDir)
+			if err == nil {
+				sm.logger.Debugf("No scan files found. Files in temp directory:")
+				for _, entry := range entries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jpg") {
+						sm.logger.Debugf("  - %s", entry.Name())
+					}
+				}
+			}
 		}
 	} else {
 		// Single page scan
 		filename := fmt.Sprintf("%s.jpg", baseFilename)
 		fullPath := fmt.Sprintf("%s/%s", sm.config.TempFilesDir, filename)
-		
+
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 			return nil, fmt.Errorf("scan completed but file was not created")
 		}
@@ -333,22 +388,22 @@ func (sm *ScannerManager) GetScannerCapabilities(device string) (map[string]inte
 	// Parse capabilities
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		
+
 		// Check for resolution options
 		if strings.Contains(line, "resolution") {
 			capabilities["resolution"] = true
 		}
-		
+
 		// Check for color mode options
 		if strings.Contains(line, "mode") {
 			capabilities["color"] = true
 		}
-		
+
 		// Check for source options (ADF, duplex)
 		if strings.Contains(line, "source") {
 			capabilities["source"] = true
 		}
-		
+
 		// Check for batch options
 		if strings.Contains(line, "batch") {
 			capabilities["multi_page"] = true

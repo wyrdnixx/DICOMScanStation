@@ -91,6 +91,44 @@
                                 <p>No connected scanners available</p>
                             </div>
                         </div>
+                        
+                        <!-- Scan Options (initially hidden) -->
+                        <div id="scan-options" style="display: none;">
+                            <hr>
+                            <h6><i class="fas fa-cog"></i> Scan Options</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="multiPage" checked>
+                                        <label class="form-check-label" for="multiPage">
+                                            Multi-page scanning
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="duplex">
+                                        <label class="form-check-label" for="duplex">
+                                            Duplex (both sides)
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="color" checked>
+                                        <label class="form-check-label" for="color">
+                                            Color scanning
+                                        </label>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="resolution" class="form-label">Resolution (DPI)</label>
+                                        <select class="form-select" id="resolution">
+                                            <option value="150">150 DPI</option>
+                                            <option value="300" selected>300 DPI</option>
+                                            <option value="600">600 DPI</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -219,6 +257,7 @@
             // Generate scan control based on connected scanners
             if (connectedScanners.length === 0) {
                 scanControlHTML = '<p class="text-muted text-center">No connected scanners available</p>';
+                document.getElementById('scan-options').style.display = 'none';
             } else if (connectedScanners.length === 1) {
                 const scanner = connectedScanners[0];
                 const isSelected = selectedScanner === scanner.device;
@@ -233,6 +272,12 @@
                         </button>
                     </div>
                 `;
+                
+                if (isSelected) {
+                    document.getElementById('scan-options').style.display = 'block';
+                } else {
+                    document.getElementById('scan-options').style.display = 'none';
+                }
             } else {
                 // Multiple connected scanners
                 const selectedScannerObj = connectedScanners.find(s => s.device === selectedScanner);
@@ -245,6 +290,7 @@
                             </button>
                         </div>
                     `;
+                    document.getElementById('scan-options').style.display = 'block';
                 } else {
                     scanControlHTML = `
                         <div class="text-center">
@@ -254,6 +300,7 @@
                             </button>
                         </div>
                     `;
+                    document.getElementById('scan-options').style.display = 'none';
                 }
             }
 
@@ -327,6 +374,12 @@
         function selectScanner(device) {
             selectedScanner = device;
             loadScanners(); // Refresh the UI to show selection
+            
+            // Show scan options when a scanner is selected
+            const scanOptions = document.getElementById('scan-options');
+            if (scanOptions) {
+                scanOptions.style.display = 'block';
+            }
         }
 
         function startScan(device) {
@@ -345,20 +398,32 @@
             isScanning = true;
             clearInterval(filesRefreshInterval);
 
+            // Get scan options
+            const options = {
+                multi_page: document.getElementById('multiPage').checked,
+                duplex: document.getElementById('duplex').checked,
+                color: document.getElementById('color').checked,
+                resolution: parseInt(document.getElementById('resolution').value)
+            };
+
             fetch('/api/scan', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ device: device })
+                body: JSON.stringify({ 
+                    device: device,
+                    options: options
+                })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
                     alert('Scan failed: ' + data.error);
                 } else {
-                    alert('Scan completed successfully!');
-                    // Add a delay to ensure file is fully written before refreshing
+                    const pageText = data.pages === 1 ? 'page' : 'pages';
+                    alert(`Scan completed successfully! Scanned ${data.pages} ${pageText}.`);
+                    // Add a delay to ensure files are fully written before refreshing
                     setTimeout(() => {
                         loadFiles();
                     }, 1000);
