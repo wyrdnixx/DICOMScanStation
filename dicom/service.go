@@ -2,7 +2,9 @@ package dicom
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -266,11 +268,24 @@ type FileProgress struct {
 	Progress int    `json:"progress"` // 0-100
 }
 
+func (ds *DicomService) generateStudyID() string {
+	// Generate a unique StudyID using timestamp and random bytes
+	timestamp := time.Now().Format("20060102150405")
+	randomBytes := make([]byte, 4)
+	rand.Read(randomBytes)
+	randomHex := fmt.Sprintf("%x", randomBytes)
+	return fmt.Sprintf("STUDY_%s_%s", timestamp, randomHex)
+}
+
 func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, filePaths []string, selectedPatient PatientInfo) ([]FileProgress, error) {
 	ds.logger.Infof("DICOM service: Starting PACs upload process")
 	ds.logger.Infof("DICOM service: Selected patient: %+v", selectedPatient)
 	ds.logger.Infof("DICOM service: Document creator: %s", documentCreator)
 	ds.logger.Infof("DICOM service: Files to process: %v", filePaths)
+
+	// Generate a unique StudyID for this upload session
+	studyID := ds.generateStudyID()
+	ds.logger.Infof("DICOM service: Generated StudyID: %s", studyID)
 
 	// Get all JPG files from temp directory
 	jpgFiles, err := ds.getJpgFilesFromTempDir()
@@ -320,7 +335,7 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 		fileProgress.Progress = 50
 		progress[i] = fileProgress
 
-		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator)
+		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator, studyID)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to update DICOM file %s: %v", dcmFile, err)
 			fileProgress.Status = "failed"
@@ -346,13 +361,26 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 			continue
 		}
 
-		// Step 4: Completed successfully
+		// Step 4: Cleanup files after successful upload
+		fileProgress.Status = "cleaning"
+		fileProgress.Message = "Cleaning up temporary files..."
+		fileProgress.Progress = 90
+		progress[i] = fileProgress
+
+		// Clean up both JPG and DCM files
+		err = ds.cleanupFiles(jpgFile, dcmFile)
+		if err != nil {
+			ds.logger.Warnf("DICOM service: Failed to cleanup files for %s: %v", jpgFile, err)
+			// Don't fail the upload if cleanup fails, just log it
+		}
+
+		// Step 5: Completed successfully
 		fileProgress.Status = "completed"
-		fileProgress.Message = "Successfully uploaded to PACs"
+		fileProgress.Message = "Successfully uploaded to PACs and cleaned up"
 		fileProgress.Progress = 100
 		progress[i] = fileProgress
 
-		ds.logger.Infof("DICOM service: Successfully processed and sent %s", jpgFile)
+		ds.logger.Infof("DICOM service: Successfully processed, sent, and cleaned up %s", jpgFile)
 	}
 
 	ds.logger.Infof("DICOM service: PACs upload process completed")
@@ -404,7 +432,7 @@ func (ds *DicomService) convertJpgToDicom(jpgFile string) (string, error) {
 	return dcmFile, nil
 }
 
-func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string) error {
+func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string, studyID string) error {
 	ds.logger.Debugf("DICOM service: Updating DICOM file %s with patient data", dcmFile)
 
 	// Build dcmodify command with patient data
@@ -418,6 +446,7 @@ func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient Patie
 		"-i", fmt.Sprintf("(0010,0040)=%s", patient.Gender), // PatientSex
 		"-i", fmt.Sprintf("(0008,0080)=%s", documentCreator), // InstitutionName
 		"-i", fmt.Sprintf("(0008,1010)=%s", ds.config.DicomStationName), // StationName
+		"-i", fmt.Sprintf("(0020,0010)=%s", studyID), // StudyID
 		dcmFile,
 	)
 
@@ -449,5 +478,24 @@ func (ds *DicomService) sendDicomToPacs(dcmFile string) error {
 	}
 
 	ds.logger.Debugf("DICOM service: dcmsend output: %s", string(output))
+	return nil
+}
+
+func (ds *DicomService) cleanupFiles(jpgFile string, dcmFile string) error {
+	ds.logger.Debugf("DICOM service: Cleaning up files: %s and %s", jpgFile, dcmFile)
+
+	// Remove JPG file
+	if err := os.Remove(jpgFile); err != nil {
+		ds.logger.Warnf("DICOM service: Failed to remove JPG file %s: %v", jpgFile, err)
+		return fmt.Errorf("failed to remove JPG file: %v", err)
+	}
+
+	// Remove DCM file
+	if err := os.Remove(dcmFile); err != nil {
+		ds.logger.Warnf("DICOM service: Failed to remove DCM file %s: %v", dcmFile, err)
+		return fmt.Errorf("failed to remove DCM file: %v", err)
+	}
+
+	ds.logger.Debugf("DICOM service: Successfully cleaned up files: %s and %s", jpgFile, dcmFile)
 	return nil
 }
