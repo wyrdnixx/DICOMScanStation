@@ -52,10 +52,18 @@
         <div class="row">
             <!-- Header -->
             <div class="col-12 bg-primary text-white p-3">
-                <h1 class="mb-0">
-                    <i class="fas fa-scanner"></i> {{.title}}
-                </h1>
-                <p class="mb-0">{{.config.WebDescription}}</p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="mb-0">
+                            <i class="fas fa-scanner"></i> {{.title}}
+                        </h1>
+                        <p class="mb-0">{{.config.WebDescription}}</p>
+                    </div>
+                    <div class="text-end">
+                        <h5 class="mb-0">DICOMScanStation</h5>
+                        <small class="text-light">(c) 2025 - Johannes Hehn - JoHeSoft</small>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -138,8 +146,11 @@
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h5><i class="fas fa-database"></i> PACs-Daten</h5>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearPacsData()">
+                            <i class="fas fa-trash"></i> Clear All
+                        </button>
                     </div>
                     <div class="card-body">
                         <!-- Search Boxes -->
@@ -913,6 +924,28 @@
                 });
         }
 
+        function clearPacsData() {
+            // Clear search input fields
+            document.getElementById('pacs-search-name').value = '';
+            document.getElementById('pacs-search-birthdate').value = '';
+            
+            // Clear document creator field
+            document.getElementById('document-creator').value = '';
+            
+            // Clear search results table
+            const tbody = document.getElementById('pacs-results-body');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No patients found</td></tr>';
+            
+            // Clear any selected patient
+            document.querySelectorAll('.pacs-radio').forEach(rb => rb.checked = false);
+            
+            // Update send button state
+            updateSendButtonState();
+            
+            // Show confirmation toast
+            showToast('success', 'Cleared', 'All PACs data has been cleared');
+        }
+
         function displayPacsResults(results) {
             const tbody = document.getElementById('pacs-results-body');
             tbody.innerHTML = '';
@@ -1039,11 +1072,6 @@
                         
                         // Clear selection
                         document.querySelectorAll('.pacs-radio').forEach(rb => rb.checked = false);
-                        
-                        // Reload page after a short delay to show updated file list
-                        setTimeout(() => {
-                            location.reload();
-                        }, 3000); // 3 second delay to allow user to see results
                     })
                     .catch(error => {
                         console.error('Send error:', error);
@@ -1110,16 +1138,56 @@
                 </div>
             `;
             
-            // Add reload message if all files were successful
+            // Add confirmation button if all files were successful
             if (success === total && total > 0) {
                 progressHTML += `
-                    <div class="alert alert-info mt-2">
-                        <i class="fas fa-info-circle"></i> Page will reload in 3 seconds to show updated file list.
+                    <div class="alert alert-success mt-3">
+                        <i class="fas fa-check-circle"></i> All files successfully uploaded to PACs!
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-success" onclick="confirmAndReload()">
+                                <i class="fas fa-check"></i> Confirm & Reload Page
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else if (success > 0) {
+                // Partial success - still offer reload option
+                progressHTML += `
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle"></i> ${success} of ${total} files uploaded successfully.
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-warning" onclick="confirmAndReload()">
+                                <i class="fas fa-check"></i> Confirm & Reload Page
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // No success - offer reload option
+                progressHTML += `
+                    <div class="alert alert-danger mt-3">
+                        <i class="fas fa-times-circle"></i> No files were uploaded successfully.
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-secondary" onclick="confirmAndReload()">
+                                <i class="fas fa-check"></i> Confirm & Reload Page
+                            </button>
+                        </div>
                     </div>
                 `;
             }
 
             container.innerHTML = progressHTML;
+        }
+
+        function confirmAndReload() {
+            // Hide the progress modal
+            const progressModal = bootstrap.Modal.getInstance(document.getElementById('progressModal'));
+            if (progressModal) {
+                progressModal.hide();
+            }
+            
+            // Reload the page to show updated file list
+            location.reload();
         }
 
         // Enter key handlers for search fields
