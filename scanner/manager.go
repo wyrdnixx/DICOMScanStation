@@ -294,8 +294,16 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 			return nil, fmt.Errorf("scan timeout after %v. Consider scanning smaller batches or checking scanner settings", timeout)
 		}
 
-		sm.logger.Errorf("Scan failed: %s \n %s", errorMsg, cmd.String())
-		return nil, fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
+		// Check if it's a normal completion (document feeder out of documents)
+		if strings.Contains(errorMsg, "Document feeder out of documents") ||
+			strings.Contains(errorMsg, "Batch terminated") ||
+			strings.Contains(errorMsg, "out of documents") {
+			sm.logger.Infof("Scan completed normally: %s", errorMsg)
+			// This is not an error, just normal completion
+		} else {
+			sm.logger.Errorf("Scan failed: %s \n %s", errorMsg, cmd.String())
+			return nil, fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
+		}
 	}
 
 	// Wait a moment to ensure files are fully written and flushed to disk
@@ -380,8 +388,9 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	}
 
 	// Add header to each scanned image
-	sm.logger.Info("Adding headers to scanned images...")
-	for _, filename := range filenames {
+	sm.logger.Infof("Adding headers to %d scanned images...", len(filenames))
+	for i, filename := range filenames {
+		sm.logger.Debugf("Processing header for file %d/%d: %s", i+1, len(filenames), filename)
 		inputPath := fmt.Sprintf("%s/%s", sm.config.TempFilesDir, filename)
 		tempPath := fmt.Sprintf("%s/%s.tmp", sm.config.TempFilesDir, filename)
 
@@ -401,7 +410,7 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 			continue
 		}
 
-		sm.logger.Debugf("Added header to %s", filename)
+		sm.logger.Debugf("Successfully added header to %s", filename)
 	}
 
 	sm.logger.Infof("Document scanned successfully: %d pages", len(filenames))
