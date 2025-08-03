@@ -259,8 +259,23 @@
                     <h5 class="modal-title">Document View</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body text-center">
+                <div class="modal-body text-center position-relative">
                     <img id="modal-image" class="modal-image" src="" alt="Document">
+                    
+                    <!-- Navigation buttons -->
+                    <button type="button" class="btn btn-outline-primary position-absolute top-50 start-0 translate-middle-y" 
+                            id="prev-image-btn" onclick="showPreviousImage()" style="z-index: 10;">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-primary position-absolute top-50 end-0 translate-middle-y" 
+                            id="next-image-btn" onclick="showNextImage()" style="z-index: 10;">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    
+                    <!-- Navigation info -->
+                    <div class="position-absolute bottom-0 start-50 translate-middle-x mb-2">
+                        <span id="image-nav-info" class="badge bg-secondary">1 of 1</span>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -312,6 +327,7 @@
     <script>
         let currentFiles = [];
         let currentFilename = '';
+        let currentImageIndex = -1;
         let selectedScanner = '';
 
         let isScanning = false;
@@ -540,8 +556,19 @@
                 return;
             }
 
-            // Sort files by filename
-            files.sort((a, b) => a.name.localeCompare(b.name));
+            // Sort files by filename with natural number sorting
+            files.sort((a, b) => {
+                // Extract numbers from filenames for natural sorting
+                const getNumber = (filename) => {
+                    const match = filename.match(/_(\d+)\.jpg$/);
+                    return match ? parseInt(match[1]) : 0;
+                };
+                
+                const numA = getNumber(a.name);
+                const numB = getNumber(b.name);
+                
+                return numA - numB;
+            });
 
             let filesHTML = '<div class="row">';
             files.forEach(file => {
@@ -664,9 +691,49 @@
 
         function viewImage(filename) {
             currentFilename = filename;
+            currentImageIndex = currentFiles.findIndex(file => file.name === filename);
             const modal = new bootstrap.Modal(document.getElementById('imageModal'));
             document.getElementById('modal-image').src = `/api/files/${filename}`;
+            updateImageNavigation();
             modal.show();
+        }
+
+        function updateImageNavigation() {
+            const prevBtn = document.getElementById('prev-image-btn');
+            const nextBtn = document.getElementById('next-image-btn');
+            const navInfo = document.getElementById('image-nav-info');
+            
+            if (prevBtn && nextBtn && navInfo) {
+                const totalImages = currentFiles.length;
+                const currentImage = currentImageIndex + 1;
+                
+                // Update navigation buttons
+                prevBtn.disabled = currentImageIndex <= 0;
+                nextBtn.disabled = currentImageIndex >= totalImages - 1;
+                
+                // Update navigation info
+                navInfo.textContent = `${currentImage} of ${totalImages}`;
+            }
+        }
+
+        function showPreviousImage() {
+            if (currentImageIndex > 0) {
+                currentImageIndex--;
+                const filename = currentFiles[currentImageIndex].name;
+                currentFilename = filename;
+                document.getElementById('modal-image').src = `/api/files/${filename}`;
+                updateImageNavigation();
+            }
+        }
+
+        function showNextImage() {
+            if (currentImageIndex < currentFiles.length - 1) {
+                currentImageIndex++;
+                const filename = currentFiles[currentImageIndex].name;
+                currentFilename = filename;
+                document.getElementById('modal-image').src = `/api/files/${filename}`;
+                updateImageNavigation();
+            }
         }
 
         function deleteFile(filename) {
@@ -1078,6 +1145,27 @@
                     }
                 });
             }
+
+            // Add keyboard navigation for image modal
+            document.addEventListener('keydown', function(event) {
+                const imageModal = document.getElementById('imageModal');
+                if (imageModal && imageModal.classList.contains('show')) {
+                    switch(event.key) {
+                        case 'ArrowLeft':
+                            event.preventDefault();
+                            showPreviousImage();
+                            break;
+                        case 'ArrowRight':
+                            event.preventDefault();
+                            showNextImage();
+                            break;
+                        case 'Escape':
+                            event.preventDefault();
+                            bootstrap.Modal.getInstance(imageModal).hide();
+                            break;
+                    }
+                }
+            });
         });
     </script>
 </body>
