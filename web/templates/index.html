@@ -540,6 +540,9 @@
                 return;
             }
 
+            // Sort files by filename
+            files.sort((a, b) => a.name.localeCompare(b.name));
+
             let filesHTML = '<div class="row">';
             files.forEach(file => {
                 filesHTML += `

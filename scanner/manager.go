@@ -237,12 +237,13 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 
 	// Set multi-page options first
 	if options.MultiPage {
-
-		args = append(args, "--batch-start=1", "--batch-increment=1")
+		// Add batch count limit to prevent infinite scanning
+		args = append(args, "--batch-start=1", "--batch-increment=1", "--batch-count=100")
 		// Use batch mode for multi-page scanning - use proper batch pattern
 		batchPattern := sm.config.TempFilesDir + "/" + baseFilename + "_%d.jpg"
 		sm.logger.Debugf("Batch pattern: %s", batchPattern)
 		args = append(args, "--batch="+batchPattern)
+		sm.logger.Infof("Multi-page scanning with batch limit of 100 pages")
 	} else {
 		// Single page scan
 		args = append(args, "-o", fmt.Sprintf("%s.jpg", filepath))
@@ -260,7 +261,15 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	sm.logger.Infof("Scan command: scanimage %v", args)
 	cmd := exec.Command("scanimage", args...)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(sm.config.ScannerTimeout)*time.Millisecond)
+	// Increase timeout for large batch operations
+	timeout := time.Duration(sm.config.ScannerTimeout) * time.Millisecond
+	if options.MultiPage {
+		// For multi-page scanning, use a longer timeout (5 minutes)
+		timeout = 5 * time.Minute
+		sm.logger.Infof("Using extended timeout for multi-page scanning: %v", timeout)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
@@ -278,6 +287,13 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 		if errorMsg == "" {
 			errorMsg = err.Error()
 		}
+
+		// Check if it's a timeout error
+		if ctx.Err() == context.DeadlineExceeded {
+			sm.logger.Errorf("Scan timeout after %v. This may be due to a large batch or scanner limitations.", timeout)
+			return nil, fmt.Errorf("scan timeout after %v. Consider scanning smaller batches or checking scanner settings", timeout)
+		}
+
 		sm.logger.Errorf("Scan failed: %s \n %s", errorMsg, cmd.String())
 		return nil, fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
 	}
@@ -290,7 +306,7 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	if options.MultiPage {
 		// Look for batch files
 		pageNum := 1
-		maxPages := 50 // Safety limit to prevent infinite loop
+		maxPages := 100 // Increased limit to match batch-count
 		sm.logger.Debugf("Looking for batch files with base: %s", baseFilename)
 		for pageNum <= maxPages {
 			filename := fmt.Sprintf("%s_%d.jpg", baseFilename, pageNum)
