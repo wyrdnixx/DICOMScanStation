@@ -451,7 +451,7 @@ func (sm *ScannerManager) addHeaderToImage(inputPath, outputPath string) error {
 	}
 
 	// Copy the original image below the header
-	draw.Draw(newImg, image.Rect(0, headerHeight, width, newHeight), img, image.Point{0, 0}, draw.Src)
+	draw.Draw(newImg, image.Rect(0, headerHeight, width, headerHeight+height), img, image.Point{0, 0}, draw.Src)
 
 	// Load the font
 	fontBytes := goregular.TTF
