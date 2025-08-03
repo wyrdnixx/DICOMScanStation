@@ -23,7 +23,8 @@ type Config struct {
 	// DICOM Configuration for dcmtk findscu
 	DicomAETitle       string
 	DicomRemoteHost    string
-	DicomRemotePort    int
+	DicomFindscuPort   int
+	DicomStorescuPort  int
 	DicomRemoteAETitle string
 	DcmtkPath          string
 	// DICOM Station Configuration
@@ -48,7 +49,8 @@ func LoadConfig() *Config {
 		// DICOM Configuration for dcmtk findscu
 		DicomAETitle:       getEnv("DICOM_AETITLE", "DICOMScanStation"),
 		DicomRemoteHost:    getEnv("DICOM_REMOTE_HOST", "localhost"),
-		DicomRemotePort:    getEnvAsInt("DICOM_REMOTE_PORT", 11112),
+		DicomFindscuPort:   getEnvAsInt("DICOM_FINDSCU_PORT", 11112),
+		DicomStorescuPort:  getEnvAsInt("DICOM_STORESCU_PORT", 11113),
 		DicomRemoteAETitle: getEnv("DICOM_REMOTE_AETITLE", "ANY-SCP"),
 		DcmtkPath:          getEnv("DCMTK_PATH", "/usr/bin"),
 		// DICOM Station Configuration

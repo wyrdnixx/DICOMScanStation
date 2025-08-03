@@ -75,8 +75,8 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 				"-k", "PatientID", // Request Patient ID
 				"-k", fmt.Sprintf("PatientBirthDate=%s", pattern), // Patient birthdate search
 				"-k", "PatientSex", // Request Patient Sex
-				ds.config.DicomRemoteHost,                    // Remote host (at the end)
-				fmt.Sprintf("%d", ds.config.DicomRemotePort), // Remote port (at the end)
+				ds.config.DicomRemoteHost,                     // Remote host (at the end)
+				fmt.Sprintf("%d", ds.config.DicomFindscuPort), // Remote port (at the end)
 			)
 		} else {
 			// Name search
@@ -91,8 +91,8 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 				"-k", "PatientID", // Request Patient ID
 				"-k", "PatientBirthDate", // Request Patient Birth Date
 				"-k", "PatientSex", // Request Patient Sex
-				ds.config.DicomRemoteHost,                    // Remote host (at the end)
-				fmt.Sprintf("%d", ds.config.DicomRemotePort), // Remote port (at the end)
+				ds.config.DicomRemoteHost,                     // Remote host (at the end)
+				fmt.Sprintf("%d", ds.config.DicomFindscuPort), // Remote port (at the end)
 			)
 		}
 
@@ -154,7 +154,7 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 			"-k", "QueryRetrieveLevel=PATIENT",
 			"-k", "PatientName=*",
 			ds.config.DicomRemoteHost,
-			fmt.Sprintf("%d", ds.config.DicomRemotePort),
+			fmt.Sprintf("%d", ds.config.DicomFindscuPort),
 		)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -164,7 +164,7 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 		_, testErr := testCmd.CombinedOutput()
 		if testErr != nil {
 			ds.logger.Errorf("DICOM service: Connection test failed: %v", testErr)
-			return nil, fmt.Errorf("unable to connect to DICOM server at %s:%d", ds.config.DicomRemoteHost, ds.config.DicomRemotePort)
+			return nil, fmt.Errorf("unable to connect to DICOM server at %s:%d", ds.config.DicomRemoteHost, ds.config.DicomFindscuPort)
 		}
 	}
 
@@ -519,7 +519,7 @@ func (ds *DicomService) sendDicomToPacs(dcmFile string) error {
 		"-aet", ds.config.DicomAETitle,
 		"-aec", ds.config.DicomRemoteAETitle,
 		ds.config.DicomRemoteHost,
-		fmt.Sprintf("%d", ds.config.DicomRemotePort),
+		fmt.Sprintf("%d", ds.config.DicomStorescuPort),
 		dcmFile,
 	)
 
