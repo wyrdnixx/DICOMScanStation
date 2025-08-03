@@ -108,6 +108,15 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 		if err != nil {
 			ds.logger.Debugf("DICOM service: Pattern %s failed: %v", pattern, err)
 			ds.logger.Debugf("DICOM service: Command output: %s", string(output))
+
+			// Check for connection errors based on findscu output
+			outputStr := string(output)
+			if strings.Contains(outputStr, "Association Request Failed") {
+				// Return the exact findscu error message
+				ds.logger.Errorf("DICOM service: findscu error: %s", outputStr)
+				return nil, fmt.Errorf("DICOM error: %s", strings.TrimSpace(outputStr))
+			}
+
 			continue // Try next pattern
 		}
 
@@ -126,6 +135,33 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 				allPatients = append(allPatients, patient)
 				seenPatients[patient.PatientID] = true
 			}
+		}
+	}
+
+	// If no patients found and we tried all patterns, check if it was due to connection issues
+	if len(allPatients) == 0 {
+		ds.logger.Warn("DICOM service: No patients found after trying all patterns")
+		// Try a simple connection test
+		testCmd := exec.Command(
+			ds.config.DcmtkPath+"/findscu",
+			"-v",
+			"-S",
+			"-aet", "AET1",
+			"-aec", ds.config.DicomRemoteAETitle,
+			"-k", "QueryRetrieveLevel=PATIENT",
+			"-k", "PatientName=*",
+			ds.config.DicomRemoteHost,
+			fmt.Sprintf("%d", ds.config.DicomRemotePort),
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		testCmd = exec.CommandContext(ctx, testCmd.Path, testCmd.Args[1:]...)
+
+		_, testErr := testCmd.CombinedOutput()
+		if testErr != nil {
+			ds.logger.Errorf("DICOM service: Connection test failed: %v", testErr)
+			return nil, fmt.Errorf("unable to connect to DICOM server at %s:%d", ds.config.DicomRemoteHost, ds.config.DicomRemotePort)
 		}
 	}
 

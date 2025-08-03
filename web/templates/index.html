@@ -732,7 +732,10 @@
             fetch(`/api/dicom/search?q=${encodeURIComponent(searchTerm)}&type=name`)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        // Read the error message from the response body
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                        });
                     }
                     return response.json();
                 })
@@ -742,8 +745,14 @@
                 })
                 .catch(error => {
                     console.error('Search error:', error);
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Search failed: ' + error.message + '</td></tr>';
-                    showToast('error', 'Search Failed', 'Failed to search patients: ' + error.message);
+                    console.error('Error message:', error.message);
+                    
+                    // Always display the exact error message from the server
+                    const errorMessage = error.message;
+                    const toastMessage = error.message;
+                    
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">' + errorMessage + '</td></tr>';
+                    showToast('error', 'Search Failed', toastMessage);
                 });
         }
 
@@ -768,7 +777,10 @@
             fetch(`/api/dicom/search?q=${encodeURIComponent(searchTerm)}&type=birthdate`)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        // Read the error message from the response body
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                        });
                     }
                     return response.json();
                 })
@@ -778,8 +790,14 @@
                 })
                 .catch(error => {
                     console.error('Search error:', error);
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Search failed: ' + error.message + '</td></tr>';
-                    showToast('error', 'Search Failed', 'Failed to search patients: ' + error.message);
+                    console.error('Error message:', error.message);
+                    
+                    // Always display the exact error message from the server
+                    const errorMessage = error.message;
+                    const toastMessage = error.message;
+                    
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">' + errorMessage + '</td></tr>';
+                    showToast('error', 'Search Failed', toastMessage);
                 });
         }
 
