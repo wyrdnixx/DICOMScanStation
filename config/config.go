@@ -20,6 +20,12 @@ type Config struct {
 	WebDescription      string
 	LogLevel            string
 	LogFormat           string
+	// DICOM Configuration for dcmtk findscu
+	DicomAETitle       string
+	DicomRemoteHost    string
+	DicomRemotePort    int
+	DicomRemoteAETitle string
+	DcmtkPath          string
 }
 
 func LoadConfig() *Config {
@@ -37,6 +43,12 @@ func LoadConfig() *Config {
 		WebDescription:      getEnv("WEB_DESCRIPTION", "USB Document Scanner Web Interface"),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		LogFormat:           getEnv("LOG_FORMAT", "json"),
+		// DICOM Configuration for dcmtk findscu
+		DicomAETitle:       getEnv("DICOM_AETITLE", "DICOMScanStation"),
+		DicomRemoteHost:    getEnv("DICOM_REMOTE_HOST", "localhost"),
+		DicomRemotePort:    getEnvAsInt("DICOM_REMOTE_PORT", 11112),
+		DicomRemoteAETitle: getEnv("DICOM_REMOTE_AETITLE", "ANY-SCP"),
+		DcmtkPath:          getEnv("DCMTK_PATH", "/usr/bin"),
 	}
 }
 

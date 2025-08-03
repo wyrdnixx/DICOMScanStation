@@ -142,18 +142,27 @@
                         <h5><i class="fas fa-database"></i> PACs-Daten</h5>
                     </div>
                     <div class="card-body">
-                        <!-- Search Box -->
+                        <!-- Search Boxes -->
                         <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="pacs-search" class="form-label">Patient Search:</label>
+                            <div class="col-md-4">
+                                <label for="pacs-search-name" class="form-label">Nachname:</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="pacs-search" placeholder="Enter patient name or ID...">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchPacs()">
+                                    <input type="text" class="form-control" id="pacs-search-name" placeholder="Enter patient name...">
+                                    <button class="btn btn-outline-primary" type="button" onclick="searchPacsByName()">
                                         <i class="fas fa-search"></i> Search
                                     </button>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
+                                <label for="pacs-search-birthdate" class="form-label">Geburtsdatum:</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="pacs-search-birthdate" placeholder="YYYYMMDD format...">
+                                    <button class="btn btn-outline-primary" type="button" onclick="searchPacsByBirthdate()">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
                                 <label for="document-creator" class="form-label">Dokument Ersteller:</label>
                                 <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
                             </div>
@@ -166,9 +175,7 @@
                                     <table class="table table-striped table-hover" id="pacs-results-table">
                                         <thead class="table-dark">
                                             <tr>
-                                                <th>
-                                                    <input type="checkbox" class="form-check-input" id="select-all-pacs">
-                                                </th>
+                                                <th>Select</th>
                                                 <th>Patient ID</th>
                                                 <th>Name</th>
                                                 <th>Birth Date</th>
@@ -710,29 +717,70 @@
         }
 
         // PACs functionality
-        function searchPacs() {
-            const searchTerm = document.getElementById('pacs-search').value.trim();
+        function searchPacsByName() {
+            const searchTerm = document.getElementById('pacs-search-name').value.trim();
             if (!searchTerm) {
-                showToast('warning', 'Search Error', 'Please enter a search term');
+                showToast('warning', 'Search Error', 'Please enter a patient name');
                 return;
             }
 
             // Show loading state
             const tbody = document.getElementById('pacs-results-body');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border" role="status"></div><p>Searching by name...</p></td></tr>';
 
-            // Simulate PACs search (replace with actual API call)
-            setTimeout(() => {
-                // Mock data for demonstration
-                const mockResults = [
-                    { patientId: 'P001', name: 'Max Mustermann', birthDate: '1980-05-15', gender: 'M', studyDate: '2024-01-15' },
-                    { patientId: 'P002', name: 'Anna Schmidt', birthDate: '1975-12-03', gender: 'F', studyDate: '2024-01-14' },
-                    { patientId: 'P003', name: 'Hans Mueller', birthDate: '1990-08-22', gender: 'M', studyDate: '2024-01-13' }
-                ];
+            // Call the DICOM search API for name search
+            fetch(`/api/dicom/search?q=${encodeURIComponent(searchTerm)}&type=name`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayPacsResults(data.patients || []);
+                    showToast('success', 'Search Complete', `Found ${data.total || 0} patients`);
+                })
+                .catch(error => {
+                    console.error('Search error:', error);
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Search failed: ' + error.message + '</td></tr>';
+                    showToast('error', 'Search Failed', 'Failed to search patients: ' + error.message);
+                });
+        }
 
-                displayPacsResults(mockResults);
-                showToast('success', 'Search Complete', `Found ${mockResults.length} patients`);
-            }, 1000);
+        function searchPacsByBirthdate() {
+            const searchTerm = document.getElementById('pacs-search-birthdate').value.trim();
+            if (!searchTerm) {
+                showToast('warning', 'Search Error', 'Please enter a birth date (YYYYMMDD format)');
+                return;
+            }
+
+            // Validate date format (YYYYMMDD)
+            if (!/^\d{8}$/.test(searchTerm)) {
+                showToast('warning', 'Invalid Format', 'Please enter birth date in YYYYMMDD format (e.g., 19440831)');
+                return;
+            }
+
+            // Show loading state
+            const tbody = document.getElementById('pacs-results-body');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border" role="status"></div><p>Searching by birth date...</p></td></tr>';
+
+            // Call the DICOM search API for birthdate search
+            fetch(`/api/dicom/search?q=${encodeURIComponent(searchTerm)}&type=birthdate`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayPacsResults(data.patients || []);
+                    showToast('success', 'Search Complete', `Found ${data.total || 0} patients`);
+                })
+                .catch(error => {
+                    console.error('Search error:', error);
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Search failed: ' + error.message + '</td></tr>';
+                    showToast('error', 'Search Failed', 'Failed to search patients: ' + error.message);
+                });
         }
 
         function displayPacsResults(results) {
@@ -747,7 +795,7 @@
             results.forEach((patient, index) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td><input type="checkbox" class="form-check-input pacs-checkbox" value="${patient.patientId}"></td>
+                    <td><input type="radio" class="form-check-input pacs-radio" name="selectedPatient" value="${patient.patientId}"></td>
                     <td>${patient.patientId}</td>
                     <td>${patient.name}</td>
                     <td>${patient.birthDate}</td>
@@ -759,11 +807,11 @@
         }
 
         function sendToPacs() {
-            const selectedPatients = Array.from(document.querySelectorAll('.pacs-checkbox:checked')).map(cb => cb.value);
+            const selectedPatient = document.querySelector('.pacs-radio:checked');
             const documentCreator = document.getElementById('document-creator').value.trim();
 
-            if (selectedPatients.length === 0) {
-                showToast('warning', 'No Selection', 'Please select at least one patient');
+            if (!selectedPatient) {
+                showToast('warning', 'No Selection', 'Please select a patient');
                 return;
             }
 
@@ -779,7 +827,7 @@
 
             showConfirm(
                 'Send to PACs',
-                `Send ${currentFiles.length} document(s) to ${selectedPatients.length} selected patient(s)?`,
+                `Send ${currentFiles.length} document(s) to the selected patient?`,
                 'fa-paper-plane',
                 () => {
                     // Show loading state
@@ -788,27 +836,62 @@
                     button.disabled = true;
                     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
 
-                    // Simulate sending to PACs (replace with actual API call)
-                    setTimeout(() => {
+                    // Call the real DICOM send API
+                    fetch('/api/dicom/send', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            patientIds: [selectedPatient.value],
+                            documentCreator: documentCreator
+                        })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
                         button.disabled = false;
                         button.innerHTML = originalText;
-                        showToast('success', 'Sent to PACs', 'Documents successfully sent to PACs!');
+                        showToast('success', 'Sent to PACs', `Successfully sent ${data.files} files to the selected patient!`);
                         
-                        // Clear selections
-                        document.querySelectorAll('.pacs-checkbox').forEach(cb => cb.checked = false);
-                        document.getElementById('select-all-pacs').checked = false;
-                    }, 2000);
+                        // Clear selection
+                        document.querySelectorAll('.pacs-radio').forEach(rb => rb.checked = false);
+                    })
+                    .catch(error => {
+                        console.error('Send error:', error);
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                        showToast('error', 'Send Failed', 'Failed to send to PACs: ' + error.message);
+                    });
                 }
             );
         }
 
-        // Select all functionality for PACs table
+        // Enter key handlers for search fields
         document.addEventListener('DOMContentLoaded', function() {
-            const selectAllCheckbox = document.getElementById('select-all-pacs');
-            if (selectAllCheckbox) {
-                selectAllCheckbox.addEventListener('change', function() {
-                    const checkboxes = document.querySelectorAll('.pacs-checkbox');
-                    checkboxes.forEach(cb => cb.checked = this.checked);
+            // Add Enter key handlers for search fields
+            const nameSearchField = document.getElementById('pacs-search-name');
+            const birthdateSearchField = document.getElementById('pacs-search-birthdate');
+
+            if (nameSearchField) {
+                nameSearchField.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        searchPacsByName();
+                    }
+                });
+            }
+
+            if (birthdateSearchField) {
+                birthdateSearchField.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        searchPacsByBirthdate();
+                    }
                 });
             }
         });

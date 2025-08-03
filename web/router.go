@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"DICOMScanStation/config"
+	"DICOMScanStation/dicom"
 	"DICOMScanStation/scanner"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,7 @@ import (
 type Router struct {
 	router         *gin.Engine
 	scannerManager *scanner.ScannerManager
+	dicomService   *dicom.DicomService
 	config         *config.Config
 	logger         *logrus.Logger
 }
@@ -37,9 +39,13 @@ func NewRouter(sm *scanner.ScannerManager, cfg *config.Config) *Router {
 		c.Next()
 	})
 
+	// Initialize DICOM service
+	dicomService := dicom.NewDicomService(cfg)
+
 	return &Router{
 		router:         router,
 		scannerManager: sm,
+		dicomService:   dicomService,
 		config:         cfg,
 		logger:         logrus.New(),
 	}
@@ -59,6 +65,9 @@ func (r *Router) SetupRoutes() {
 		api.POST("/scan", r.startScan)
 		api.GET("/files/:filename", r.getFile)
 		api.DELETE("/files/:filename", r.deleteFile)
+		// DICOM endpoints
+		api.GET("/dicom/search", r.searchPatients)
+		api.POST("/dicom/send", r.sendToPacs)
 	}
 
 	// Web routes
@@ -88,8 +97,8 @@ func (r *Router) getFiles(c *gin.Context) {
 
 func (r *Router) startScan(c *gin.Context) {
 	var req struct {
-		Device  string                 `json:"device" binding:"required"`
-		Options *scanner.ScanOptions   `json:"options"`
+		Device  string               `json:"device" binding:"required"`
+		Options *scanner.ScanOptions `json:"options"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -220,20 +229,86 @@ func (r *Router) isAllowedExtension(ext string) bool {
 
 func (r *Router) getScannerCapabilities(c *gin.Context) {
 	device := c.Param("device")
-	if device == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Device parameter is required"})
-		return
-	}
-
 	capabilities, err := r.scannerManager.GetScannerCapabilities(device)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	c.JSON(http.StatusOK, capabilities)
+}
+
+func (r *Router) searchPatients(c *gin.Context) {
+	searchTerm := c.Query("q")
+	searchType := c.Query("type")
+
+	if searchTerm == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Search term is required"})
+		return
+	}
+
+	// Default to name search if type is not specified
+	if searchType == "" {
+		searchType = "name"
+	}
+
+	r.logger.Infof("Searching for patients with term: %s (type: %s)", searchTerm, searchType)
+
+	patients, err := r.dicomService.SearchPatients(searchTerm, searchType)
+	if err != nil {
+		r.logger.Errorf("Patient search failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"device":        device,
-		"capabilities":  capabilities,
+		"patients": patients,
+		"total":    len(patients),
+	})
+}
+
+func (r *Router) sendToPacs(c *gin.Context) {
+	var req struct {
+		PatientIDs      []string `json:"patientIds" binding:"required"`
+		DocumentCreator string   `json:"documentCreator" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Patient IDs and document creator are required"})
+		return
+	}
+
+	// Get list of scanned files
+	files, err := r.getFileList()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file list"})
+		return
+	}
+
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No scanned files to send"})
+		return
+	}
+
+	// Build file paths
+	var filePaths []string
+	for _, file := range files {
+		filePaths = append(filePaths, filepath.Join(r.config.TempFilesDir, file.Name))
+	}
+
+	r.logger.Infof("Sending %d files to %d patients", len(filePaths), len(req.PatientIDs))
+
+	err = r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths)
+	if err != nil {
+		r.logger.Errorf("Failed to send to PACS: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Files sent to PACS successfully",
+		"files":    len(filePaths),
+		"patients": len(req.PatientIDs),
 	})
 }
 

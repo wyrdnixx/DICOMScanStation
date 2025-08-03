@@ -37,6 +37,14 @@ sudo dnf install sane-backends sane-frontends
 # Arch Linux
 sudo pacman -S sane
 ```
+### Install dcmtk (Dicom Toolkit)
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install dcmtk
+
+```
+
 
 ### Install Go
 ```bash
