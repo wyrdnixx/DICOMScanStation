@@ -192,10 +192,31 @@
                                 <div class="col-md-6">
                                     <label for="document-creator" class="form-label">Dokument Ersteller:</label>
                                     <div class="input-group">
-                                        <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
+                                                                                <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
                                         <button class="btn btn-success" onclick="sendToPacs()">
                                             <i class="fas fa-paper-plane"></i> An PACs senden
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Progress Modal -->
+                        <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="progressModalLabel">
+                                            <i class="fas fa-spinner fa-spin"></i> Processing Files...
+                                        </h5>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div id="progress-container">
+                                            <!-- Progress items will be inserted here -->
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                     </div>
                                 </div>
                             </div>
@@ -887,6 +908,10 @@
                     button.disabled = true;
                     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
 
+                    // Show progress modal
+                    const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+                    progressModal.show();
+
                     // Call the real DICOM send API with selected patient data
                     fetch('/api/dicom/send', {
                         method: 'POST',
@@ -910,7 +935,9 @@
                     .then(data => {
                         button.disabled = false;
                         button.innerHTML = originalText;
-                        showToast('success', 'Sent to PACs', `Successfully processed and sent ${data.files} files to patient ${data.patient}!`);
+                        
+                        // Show progress results
+                        showProgressResults(data.progress, data.success, data.total);
                         
                         // Clear selection
                         document.querySelectorAll('.pacs-radio').forEach(rb => rb.checked = false);
@@ -919,10 +946,67 @@
                         console.error('Send error:', error);
                         button.disabled = false;
                         button.innerHTML = originalText;
+                        progressModal.hide();
                         showToast('error', 'Send Failed', 'Failed to send to PACs: ' + error.message);
                     });
                 }
             );
+        }
+
+        function showProgressResults(progress, success, total) {
+            const container = document.getElementById('progress-container');
+            const modalTitle = document.getElementById('progressModalLabel');
+            
+            // Update modal title based on results
+            if (success === total) {
+                modalTitle.innerHTML = '<i class="fas fa-check-circle text-success"></i> Upload Complete';
+            } else if (success > 0) {
+                modalTitle.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i> Upload Partially Complete';
+            } else {
+                modalTitle.innerHTML = '<i class="fas fa-times-circle text-danger"></i> Upload Failed';
+            }
+
+            // Build progress HTML
+            let progressHTML = '';
+            progress.forEach((item, index) => {
+                const statusClass = item.status === 'completed' ? 'success' : 
+                                  item.status === 'failed' ? 'danger' : 'info';
+                const statusIcon = item.status === 'completed' ? 'fa-check-circle' :
+                                 item.status === 'failed' ? 'fa-times-circle' :
+                                 item.status === 'converting' ? 'fa-cog fa-spin' :
+                                 item.status === 'updating' ? 'fa-edit' :
+                                 item.status === 'sending' ? 'fa-paper-plane' : 'fa-circle';
+                
+                progressHTML += `
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">${item.filename}</h6>
+                                    <small class="text-muted">${item.message}</small>
+                                </div>
+                                <div class="text-end">
+                                    <i class="fas ${statusIcon} text-${statusClass}"></i>
+                                    <br>
+                                    <small class="text-${statusClass}">${item.status.toUpperCase()}</small>
+                                </div>
+                            </div>
+                            <div class="progress mt-2" style="height: 4px;">
+                                <div class="progress-bar bg-${statusClass}" style="width: ${item.progress}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Add summary
+            progressHTML += `
+                <div class="alert alert-${success === total ? 'success' : success > 0 ? 'warning' : 'danger'} mt-3">
+                    <strong>Summary:</strong> ${success} of ${total} files successfully uploaded to PACs.
+                </div>
+            `;
+
+            container.innerHTML = progressHTML;
         }
 
         // Enter key handlers for search fields

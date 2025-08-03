@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -258,7 +259,14 @@ func (ds *DicomService) parseFindscuOutput(output string) ([]PatientInfo, error)
 	return patients, nil
 }
 
-func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, filePaths []string, selectedPatient PatientInfo) error {
+type FileProgress struct {
+	Filename string `json:"filename"`
+	Status   string `json:"status"` // "converting", "updating", "sending", "completed", "failed"
+	Message  string `json:"message"`
+	Progress int    `json:"progress"` // 0-100
+}
+
+func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, filePaths []string, selectedPatient PatientInfo) ([]FileProgress, error) {
 	ds.logger.Infof("DICOM service: Starting PACs upload process")
 	ds.logger.Infof("DICOM service: Selected patient: %+v", selectedPatient)
 	ds.logger.Infof("DICOM service: Document creator: %s", documentCreator)
@@ -268,41 +276,87 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 	jpgFiles, err := ds.getJpgFilesFromTempDir()
 	if err != nil {
 		ds.logger.Errorf("DICOM service: Failed to get JPG files: %v", err)
-		return fmt.Errorf("failed to get JPG files: %v", err)
+		return nil, fmt.Errorf("failed to get JPG files: %v", err)
 	}
 
 	ds.logger.Infof("DICOM service: Found %d JPG files to convert", len(jpgFiles))
 
+	var progress []FileProgress
+
 	// Process each JPG file
-	for _, jpgFile := range jpgFiles {
+	for i, jpgFile := range jpgFiles {
+		filename := filepath.Base(jpgFile)
+
+		// Initialize progress for this file
+		fileProgress := FileProgress{
+			Filename: filename,
+			Status:   "converting",
+			Message:  "Converting JPG to DICOM format...",
+			Progress: 0,
+		}
+		progress = append(progress, fileProgress)
+
 		ds.logger.Infof("DICOM service: Processing file: %s", jpgFile)
 
 		// Step 1: Convert JPG to DICOM using img2dcm
+		fileProgress.Status = "converting"
+		fileProgress.Message = "Converting JPG to DICOM format..."
+		fileProgress.Progress = 20
+		progress[i] = fileProgress
+
 		dcmFile, err := ds.convertJpgToDicom(jpgFile)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to convert %s to DICOM: %v", jpgFile, err)
+			fileProgress.Status = "failed"
+			fileProgress.Message = fmt.Sprintf("Conversion failed: %v", err)
+			fileProgress.Progress = 0
+			progress[i] = fileProgress
 			continue
 		}
 
 		// Step 2: Update DICOM file with patient data
+		fileProgress.Status = "updating"
+		fileProgress.Message = "Updating DICOM with patient data..."
+		fileProgress.Progress = 50
+		progress[i] = fileProgress
+
 		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to update DICOM file %s: %v", dcmFile, err)
+			fileProgress.Status = "failed"
+			fileProgress.Message = fmt.Sprintf("Update failed: %v", err)
+			fileProgress.Progress = 0
+			progress[i] = fileProgress
 			continue
 		}
 
 		// Step 3: Send DICOM file to PACs server
+		fileProgress.Status = "sending"
+		fileProgress.Message = "Sending to PACs server..."
+		fileProgress.Progress = 80
+		progress[i] = fileProgress
+
 		err = ds.sendDicomToPacs(dcmFile)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to send %s to PACs: %v", dcmFile, err)
+			fileProgress.Status = "failed"
+			fileProgress.Message = fmt.Sprintf("Upload failed: %v", err)
+			fileProgress.Progress = 0
+			progress[i] = fileProgress
 			continue
 		}
+
+		// Step 4: Completed successfully
+		fileProgress.Status = "completed"
+		fileProgress.Message = "Successfully uploaded to PACs"
+		fileProgress.Progress = 100
+		progress[i] = fileProgress
 
 		ds.logger.Infof("DICOM service: Successfully processed and sent %s", jpgFile)
 	}
 
 	ds.logger.Infof("DICOM service: PACs upload process completed")
-	return nil
+	return progress, nil
 }
 
 func (ds *DicomService) getJpgFilesFromTempDir() ([]string, error) {

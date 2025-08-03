@@ -299,17 +299,28 @@ func (r *Router) sendToPacs(c *gin.Context) {
 
 	r.logger.Infof("Sending %d files to patient: %+v", len(filePaths), req.SelectedPatient)
 
-	err = r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths, req.SelectedPatient)
+	progress, err := r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths, req.SelectedPatient)
 	if err != nil {
 		r.logger.Errorf("Failed to send to PACS: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Count successful uploads
+	successCount := 0
+	for _, p := range progress {
+		if p.Status == "completed" {
+			successCount++
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Files sent to PACS successfully",
-		"files":   len(filePaths),
-		"patient": req.SelectedPatient.Name,
+		"message":  "Files sent to PACS successfully",
+		"files":    len(filePaths),
+		"patient":  req.SelectedPatient.Name,
+		"progress": progress,
+		"success":  successCount,
+		"total":    len(progress),
 	})
 }
 
