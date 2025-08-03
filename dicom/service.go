@@ -440,6 +440,36 @@ func (ds *DicomService) convertJpgToDicom(jpgFile string) (string, error) {
 	return dcmFile, nil
 }
 
+func (ds *DicomService) formatPatientNameForDicom(name string) string {
+	// Format patient name according to DICOM standard: LastName^FirstName^MiddleName^Prefix^Suffix
+	// Split the name by spaces and format it properly
+	parts := strings.Fields(strings.TrimSpace(name))
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	if len(parts) == 1 {
+		// Single name - treat as last name
+		return parts[0]
+	}
+
+	// Multiple parts - assume first is last name, second is first name
+	lastName := parts[0]
+	firstName := parts[1]
+
+	// Format as LastName^FirstName
+	formattedName := fmt.Sprintf("%s^%s", lastName, firstName)
+
+	// Add middle name if present
+	if len(parts) > 2 {
+		formattedName += "^" + parts[2]
+	}
+
+	ds.logger.Debugf("DICOM service: Formatted patient name '%s' to DICOM format: '%s'", name, formattedName)
+	return formattedName
+}
+
 func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string, studyID string, studyInstanceUID string, seriesInstanceUID string, instanceNumber int) error {
 	ds.logger.Debugf("DICOM service: Updating DICOM file %s with patient data", dcmFile)
 
@@ -449,12 +479,15 @@ func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient Patie
 	ds.logger.Debugf("DICOM service: Generated SOP Instance UID: %s for Instance: %d",
 		sopInstanceUID, instanceNumber)
 
+	// Format patient name according to DICOM standard
+	formattedPatientName := ds.formatPatientNameForDicom(patient.Name)
+
 	// Build dcmodify command with patient data
 	cmd := exec.Command(
 		ds.config.DcmtkPath+"/dcmodify",
-		"-nb",                                             // No backup
-		"-gin",                                            // Group length implicit
-		"-i", fmt.Sprintf("(0010,0010)=%s", patient.Name), // PatientName
+		"-nb",                                                     // No backup
+		"-gin",                                                    // Group length implicit
+		"-i", fmt.Sprintf("(0010,0010)=%s", formattedPatientName), // PatientName (DICOM formatted)
 		"-i", fmt.Sprintf("(0010,0020)=%s", patient.PatientID), // PatientID
 		"-i", fmt.Sprintf("(0010,0030)=%s", patient.BirthDate), // PatientBirthDate
 		"-i", fmt.Sprintf("(0010,0040)=%s", patient.Gender), // PatientSex
