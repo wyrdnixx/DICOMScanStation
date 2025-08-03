@@ -193,7 +193,7 @@
                                     <label for="document-creator" class="form-label">Dokument Ersteller:</label>
                                     <div class="input-group">
                                                                                 <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
-                                        <button class="btn btn-success" onclick="sendToPacs()">
+                                        <button class="btn btn-success" id="send-to-pacs-btn" onclick="sendToPacs()" disabled>
                                             <i class="fas fa-paper-plane"></i> An PACs senden
                                         </button>
                                     </div>
@@ -390,6 +390,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadScanners();
             loadFiles();
+            updateSendButtonState();
             
             // Refresh data every 5 seconds
             scannerRefreshInterval = setInterval(loadScanners, 5000);
@@ -512,6 +513,7 @@
                 .then(data => {
                     currentFiles = data.files;
                     updateFilesUI(data.files);
+                    updateSendButtonState();
                 })
                 .catch(error => {
                     console.error('Error loading files:', error);
@@ -565,6 +567,24 @@
             });
             filesHTML += '</div>';
             container.innerHTML = filesHTML;
+            updateSendButtonState();
+        }
+
+        function updateSendButtonState() {
+            const sendButton = document.getElementById('send-to-pacs-btn');
+            const selectedPatient = document.querySelector('.pacs-radio:checked');
+            const hasFiles = currentFiles && currentFiles.length > 0;
+            const hasPatient = selectedPatient !== null;
+            
+            if (hasFiles && hasPatient) {
+                sendButton.disabled = false;
+                sendButton.classList.remove('btn-secondary');
+                sendButton.classList.add('btn-success');
+            } else {
+                sendButton.disabled = true;
+                sendButton.classList.remove('btn-success');
+                sendButton.classList.add('btn-secondary');
+            }
         }
 
         function selectScanner(device) {
@@ -848,6 +868,14 @@
                 `;
                 tbody.appendChild(row);
             });
+            
+            // Add event listeners to radio buttons
+            document.querySelectorAll('.pacs-radio').forEach(radio => {
+                radio.addEventListener('change', updateSendButtonState);
+            });
+            
+            // Update button state after displaying results
+            updateSendButtonState();
         }
 
         function sendToPacs() {
