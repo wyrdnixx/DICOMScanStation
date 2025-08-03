@@ -283,9 +283,15 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 	ds.logger.Infof("DICOM service: Document creator: %s", documentCreator)
 	ds.logger.Infof("DICOM service: Files to process: %v", filePaths)
 
-	// Generate a unique StudyID for this upload session
+	// Generate a unique StudyID and Study Instance UID for this upload session
 	studyID := ds.generateStudyID()
+	timestamp := time.Now().Format("20060102150405")
+	studyInstanceUID := fmt.Sprintf("1.2.840.10008.1.2.3.%s", timestamp)
+	seriesInstanceUID := fmt.Sprintf("%s.1", studyInstanceUID)
+
 	ds.logger.Infof("DICOM service: Generated StudyID: %s", studyID)
+	ds.logger.Infof("DICOM service: Generated Study Instance UID: %s", studyInstanceUID)
+	ds.logger.Infof("DICOM service: Generated Series Instance UID: %s", seriesInstanceUID)
 
 	// Get all JPG files from temp directory
 	jpgFiles, err := ds.getJpgFilesFromTempDir()
@@ -335,7 +341,9 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 		fileProgress.Progress = 50
 		progress[i] = fileProgress
 
-		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator, studyID)
+		// Instance number starts from 1
+		instanceNumber := i + 1
+		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator, studyID, studyInstanceUID, seriesInstanceUID, instanceNumber)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to update DICOM file %s: %v", dcmFile, err)
 			fileProgress.Status = "failed"
@@ -432,8 +440,14 @@ func (ds *DicomService) convertJpgToDicom(jpgFile string) (string, error) {
 	return dcmFile, nil
 }
 
-func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string, studyID string) error {
+func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string, studyID string, studyInstanceUID string, seriesInstanceUID string, instanceNumber int) error {
 	ds.logger.Debugf("DICOM service: Updating DICOM file %s with patient data", dcmFile)
+
+	// Generate SOP Instance UID based on pre-generated series UID and instance number
+	sopInstanceUID := fmt.Sprintf("%s.%d", seriesInstanceUID, instanceNumber)
+
+	ds.logger.Debugf("DICOM service: Generated SOP Instance UID: %s for Instance: %d",
+		sopInstanceUID, instanceNumber)
 
 	// Build dcmodify command with patient data
 	cmd := exec.Command(
@@ -447,6 +461,10 @@ func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient Patie
 		"-i", fmt.Sprintf("(0008,0080)=%s", documentCreator), // InstitutionName
 		"-i", fmt.Sprintf("(0008,1010)=%s", ds.config.DicomStationName), // StationName
 		"-i", fmt.Sprintf("(0020,0010)=%s", studyID), // StudyID
+		"-i", fmt.Sprintf("(0020,000D)=%s", studyInstanceUID), // Study Instance UID
+		"-i", fmt.Sprintf("(0020,000E)=%s", seriesInstanceUID), // Series Instance UID
+		"-i", fmt.Sprintf("(0008,0018)=%s", sopInstanceUID), // SOP Instance UID
+		"-i", fmt.Sprintf("(0020,0013)=%d", instanceNumber), // Instance Number
 		dcmFile,
 	)
 
