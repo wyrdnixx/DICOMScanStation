@@ -352,7 +352,7 @@
             // Update modal content
             confirmIcon.className = `fas ${icon} me-2`;
             confirmTitle.textContent = title;
-            confirmMessage.textContent = message;
+            confirmMessage.innerHTML = message; // Use innerHTML to render HTML content
             
             // Set up the action button
             confirmBtn.onclick = () => {
@@ -814,7 +814,11 @@
             results.forEach((patient, index) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td><input type="radio" class="form-check-input pacs-radio" name="selectedPatient" value="${patient.patientId}"></td>
+                    <td><input type="radio" class="form-check-input pacs-radio" name="selectedPatient" value="${patient.patientId}" 
+                        data-name="${patient.name}" 
+                        data-birthdate="${patient.birthDate}" 
+                        data-gender="${patient.gender}" 
+                        data-studydate="${patient.studyDate}"></td>
                     <td>${patient.patientId}</td>
                     <td>${patient.name}</td>
                     <td>${patient.birthDate}</td>
@@ -826,10 +830,10 @@
         }
 
         function sendToPacs() {
-            const selectedPatient = document.querySelector('.pacs-radio:checked');
+            const selectedPatientRadio = document.querySelector('.pacs-radio:checked');
             const documentCreator = document.getElementById('document-creator').value.trim();
 
-            if (!selectedPatient) {
+            if (!selectedPatientRadio) {
                 showToast('warning', 'No Selection', 'Please select a patient');
                 return;
             }
@@ -844,38 +848,69 @@
                 return;
             }
 
+            // Get the selected patient data from the radio button's data attributes
+            const selectedPatient = {
+                patientId: selectedPatientRadio.value,
+                name: selectedPatientRadio.getAttribute('data-name'),
+                birthDate: selectedPatientRadio.getAttribute('data-birthdate'),
+                gender: selectedPatientRadio.getAttribute('data-gender'),
+                studyDate: selectedPatientRadio.getAttribute('data-studydate')
+            };
+
+
+
+            // Show information box with all details
+            const infoMessage = `
+                <strong>PACs Upload Information:</strong><br><br>
+                <strong>Patient:</strong> ${selectedPatient.name}<br>
+                <strong>Patient ID:</strong> ${selectedPatient.patientId}<br>
+                <strong>Birth Date:</strong> ${selectedPatient.birthDate}<br>
+                <strong>Gender:</strong> ${selectedPatient.gender}<br>
+                <strong>Document Creator:</strong> ${documentCreator}<br>
+                <strong>Institution Name:</strong> ${documentCreator}<br>
+                <strong>Files to Process:</strong> ${currentFiles.length} scanned document(s)<br><br>
+                <strong>Process:</strong><br>
+                1. Convert JPG files to DICOM format<br>
+                2. Update DICOM files with patient data<br>
+                3. Upload to PACs server<br><br>
+                <em>This process will convert all scanned images in the temp folder and upload them to the PACs server.</em>
+            `;
+
             showConfirm(
                 'Send to PACs',
-                `Send ${currentFiles.length} document(s) to the selected patient?`,
+                infoMessage,
                 'fa-paper-plane',
                 () => {
                     // Show loading state
                     const button = event.target;
                     const originalText = button.innerHTML;
                     button.disabled = true;
-                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
 
-                    // Call the real DICOM send API
+                    // Call the real DICOM send API with selected patient data
                     fetch('/api/dicom/send', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            patientIds: [selectedPatient.value],
-                            documentCreator: documentCreator
+                            patientIds: [selectedPatient.patientId],
+                            documentCreator: documentCreator,
+                            selectedPatient: selectedPatient
                         })
                     })
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            return response.json().then(errorData => {
+                                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                            });
                         }
                         return response.json();
                     })
                     .then(data => {
                         button.disabled = false;
                         button.innerHTML = originalText;
-                        showToast('success', 'Sent to PACs', `Successfully sent ${data.files} files to the selected patient!`);
+                        showToast('success', 'Sent to PACs', `Successfully processed and sent ${data.files} files to patient ${data.patient}!`);
                         
                         // Clear selection
                         document.querySelectorAll('.pacs-radio').forEach(rb => rb.checked = false);

@@ -221,9 +221,11 @@ func (ds *DicomService) parseFindscuOutput(output string) ([]PatientInfo, error)
 			}
 		} else if strings.Contains(line, "PatientSex") && currentPatient != nil {
 			// Extract gender
+			ds.logger.Debugf("DICOM service: Found PatientSex line: %s", line)
 			if idx := strings.Index(line, "["); idx != -1 {
 				if endIdx := strings.Index(line, "]"); endIdx != -1 {
 					currentPatient.Gender = strings.TrimSpace(line[idx+1 : endIdx])
+					ds.logger.Debugf("DICOM service: Extracted gender: '%s'", currentPatient.Gender)
 				}
 			}
 		} else if strings.Contains(line, "StudyDate") && currentPatient != nil {
@@ -256,14 +258,142 @@ func (ds *DicomService) parseFindscuOutput(output string) ([]PatientInfo, error)
 	return patients, nil
 }
 
-func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, filePaths []string) error {
-	ds.logger.Infof("DICOM service: Sending %d files to %d patients", len(filePaths), len(patientIDs))
-
-	// For now, we'll just log the operation
-	// In a real implementation, you would use storescu to send files to PACS
-	ds.logger.Infof("DICOM service: Would send files to patients: %v", patientIDs)
+func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, filePaths []string, selectedPatient PatientInfo) error {
+	ds.logger.Infof("DICOM service: Starting PACs upload process")
+	ds.logger.Infof("DICOM service: Selected patient: %+v", selectedPatient)
 	ds.logger.Infof("DICOM service: Document creator: %s", documentCreator)
-	ds.logger.Infof("DICOM service: Files to send: %v", filePaths)
+	ds.logger.Infof("DICOM service: Files to process: %v", filePaths)
 
+	// Get all JPG files from temp directory
+	jpgFiles, err := ds.getJpgFilesFromTempDir()
+	if err != nil {
+		ds.logger.Errorf("DICOM service: Failed to get JPG files: %v", err)
+		return fmt.Errorf("failed to get JPG files: %v", err)
+	}
+
+	ds.logger.Infof("DICOM service: Found %d JPG files to convert", len(jpgFiles))
+
+	// Process each JPG file
+	for _, jpgFile := range jpgFiles {
+		ds.logger.Infof("DICOM service: Processing file: %s", jpgFile)
+
+		// Step 1: Convert JPG to DICOM using img2dcm
+		dcmFile, err := ds.convertJpgToDicom(jpgFile)
+		if err != nil {
+			ds.logger.Errorf("DICOM service: Failed to convert %s to DICOM: %v", jpgFile, err)
+			continue
+		}
+
+		// Step 2: Update DICOM file with patient data
+		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator)
+		if err != nil {
+			ds.logger.Errorf("DICOM service: Failed to update DICOM file %s: %v", dcmFile, err)
+			continue
+		}
+
+		// Step 3: Send DICOM file to PACs server
+		err = ds.sendDicomToPacs(dcmFile)
+		if err != nil {
+			ds.logger.Errorf("DICOM service: Failed to send %s to PACs: %v", dcmFile, err)
+			continue
+		}
+
+		ds.logger.Infof("DICOM service: Successfully processed and sent %s", jpgFile)
+	}
+
+	ds.logger.Infof("DICOM service: PACs upload process completed")
+	return nil
+}
+
+func (ds *DicomService) getJpgFilesFromTempDir() ([]string, error) {
+	ds.logger.Debugf("DICOM service: Scanning for JPG files in: %s", ds.config.TempFilesDir)
+
+	// Use find command to get all JPG files
+	cmd := exec.Command("find", ds.config.TempFilesDir, "-name", "*.jpg", "-type", "f")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find JPG files: %v", err)
+	}
+
+	files := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var jpgFiles []string
+
+	for _, file := range files {
+		if strings.TrimSpace(file) != "" {
+			jpgFiles = append(jpgFiles, strings.TrimSpace(file))
+		}
+	}
+
+	ds.logger.Debugf("DICOM service: Found %d JPG files", len(jpgFiles))
+	return jpgFiles, nil
+}
+
+func (ds *DicomService) convertJpgToDicom(jpgFile string) (string, error) {
+	// Generate DICOM filename
+	dcmFile := strings.Replace(jpgFile, ".jpg", ".dcm", 1)
+
+	ds.logger.Debugf("DICOM service: Converting %s to %s", jpgFile, dcmFile)
+
+	// Run img2dcm command
+	cmd := exec.Command(
+		ds.config.DcmtkPath+"/img2dcm",
+		jpgFile,
+		dcmFile,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("img2dcm failed: %v, output: %s", err, string(output))
+	}
+
+	ds.logger.Debugf("DICOM service: img2dcm output: %s", string(output))
+	return dcmFile, nil
+}
+
+func (ds *DicomService) updateDicomWithPatientData(dcmFile string, patient PatientInfo, documentCreator string) error {
+	ds.logger.Debugf("DICOM service: Updating DICOM file %s with patient data", dcmFile)
+
+	// Build dcmodify command with patient data
+	cmd := exec.Command(
+		ds.config.DcmtkPath+"/dcmodify",
+		"-nb",                                             // No backup
+		"-gin",                                            // Group length implicit
+		"-i", fmt.Sprintf("(0010,0010)=%s", patient.Name), // PatientName
+		"-i", fmt.Sprintf("(0010,0020)=%s", patient.PatientID), // PatientID
+		"-i", fmt.Sprintf("(0010,0030)=%s", patient.BirthDate), // PatientBirthDate
+		"-i", fmt.Sprintf("(0010,0040)=%s", patient.Gender), // PatientSex
+		"-i", fmt.Sprintf("(0008,0080)=%s", documentCreator), // InstitutionName
+		"-i", fmt.Sprintf("(0008,1010)=%s", ds.config.DicomStationName), // StationName
+		dcmFile,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dcmodify failed: %v, output: %s", err, string(output))
+	}
+
+	ds.logger.Debugf("DICOM service: dcmodify output: %s", string(output))
+	return nil
+}
+
+func (ds *DicomService) sendDicomToPacs(dcmFile string) error {
+	ds.logger.Debugf("DICOM service: Sending %s to PACs server", dcmFile)
+
+	// Run dcmsend command
+	cmd := exec.Command(
+		ds.config.DcmtkPath+"/dcmsend",
+		"-aet", ds.config.DicomAETitle,
+		"-aec", ds.config.DicomRemoteAETitle,
+		ds.config.DicomRemoteHost,
+		fmt.Sprintf("%d", ds.config.DicomRemotePort),
+		dcmFile,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dcmsend failed: %v, output: %s", err, string(output))
+	}
+
+	ds.logger.Debugf("DICOM service: dcmsend output: %s", string(output))
 	return nil
 }

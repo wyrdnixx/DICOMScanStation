@@ -269,12 +269,13 @@ func (r *Router) searchPatients(c *gin.Context) {
 
 func (r *Router) sendToPacs(c *gin.Context) {
 	var req struct {
-		PatientIDs      []string `json:"patientIds" binding:"required"`
-		DocumentCreator string   `json:"documentCreator" binding:"required"`
+		PatientIDs      []string          `json:"patientIds" binding:"required"`
+		DocumentCreator string            `json:"documentCreator" binding:"required"`
+		SelectedPatient dicom.PatientInfo `json:"selectedPatient" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Patient IDs and document creator are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Patient IDs, document creator, and selected patient are required"})
 		return
 	}
 
@@ -296,9 +297,9 @@ func (r *Router) sendToPacs(c *gin.Context) {
 		filePaths = append(filePaths, filepath.Join(r.config.TempFilesDir, file.Name))
 	}
 
-	r.logger.Infof("Sending %d files to %d patients", len(filePaths), len(req.PatientIDs))
+	r.logger.Infof("Sending %d files to patient: %+v", len(filePaths), req.SelectedPatient)
 
-	err = r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths)
+	err = r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths, req.SelectedPatient)
 	if err != nil {
 		r.logger.Errorf("Failed to send to PACS: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -306,9 +307,9 @@ func (r *Router) sendToPacs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "Files sent to PACS successfully",
-		"files":    len(filePaths),
-		"patients": len(req.PatientIDs),
+		"message": "Files sent to PACS successfully",
+		"files":   len(filePaths),
+		"patient": req.SelectedPatient.Name,
 	})
 }
 

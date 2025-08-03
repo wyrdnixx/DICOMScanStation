@@ -26,6 +26,8 @@ type Config struct {
 	DicomRemotePort    int
 	DicomRemoteAETitle string
 	DcmtkPath          string
+	// DICOM Station Configuration
+	DicomStationName string
 }
 
 func LoadConfig() *Config {
@@ -49,6 +51,8 @@ func LoadConfig() *Config {
 		DicomRemotePort:    getEnvAsInt("DICOM_REMOTE_PORT", 11112),
 		DicomRemoteAETitle: getEnv("DICOM_REMOTE_AETITLE", "ANY-SCP"),
 		DcmtkPath:          getEnv("DCMTK_PATH", "/usr/bin"),
+		// DICOM Station Configuration
+		DicomStationName: getEnv("DICOM_STATION_NAME", "DICOMScanStation"),
 	}
 }
 
