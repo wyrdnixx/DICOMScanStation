@@ -45,6 +45,13 @@
         .loading.show {
             display: block;
         }
+        .settings-gear {
+            color: #6c757d;
+            transition: color 0.2s ease;
+        }
+        .settings-gear:hover {
+            color: #007bff;
+        }
     </style>
 </head>
 <body>
@@ -146,12 +153,17 @@
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-database"></i> PACs-Daten</h5>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearPacsData()">
-                            <i class="fas fa-trash"></i> Clear All
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5>
+                        <i class="fas fa-database"></i> PACs-Daten
+                        <button type="button" class="btn btn-link btn-sm ms-2 settings-gear" onclick="showSettings()" title="View Settings">
+                            <i class="fas fa-cog"></i>
                         </button>
-                    </div>
+                    </h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearPacsData()">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                </div>
                     <div class="card-body">
                         <!-- Search Boxes -->
                         <div class="row mb-3">
@@ -329,6 +341,33 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-danger" id="confirm-action-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="settingsModalLabel">
+                        <i class="fas fa-cog me-2"></i> Application Settings
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="settings-container">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading settings...</span>
+                            </div>
+                            <p>Loading settings...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1188,6 +1227,99 @@
             
             // Reload the page to show updated file list
             location.reload();
+        }
+
+        // Settings functionality
+        function showSettings() {
+            const settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            settingsModal.show();
+            loadSettings();
+        }
+
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    displaySettings(data);
+                })
+                .catch(error => {
+                    console.error('Error loading settings:', error);
+                    document.getElementById('settings-container').innerHTML = 
+                        '<div class="alert alert-danger">Failed to load settings: ' + error.message + '</div>';
+                });
+        }
+
+        function displaySettings(settings) {
+            const container = document.getElementById('settings-container');
+            
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-info-circle text-primary"></i> Application</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Name:</strong></td><td>${settings.app.name}</td></tr>
+                            <tr><td><strong>Version:</strong></td><td>${settings.app.version}</td></tr>
+                            <tr><td><strong>Host:</strong></td><td>${settings.app.host}</td></tr>
+                            <tr><td><strong>Port:</strong></td><td>${settings.app.port}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-file-alt text-success"></i> File Storage</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Temp Directory:</strong></td><td>${settings.file_storage.temp_files_dir}</td></tr>
+                            <tr><td><strong>Max File Size:</strong></td><td>${formatFileSize(settings.file_storage.max_file_size)}</td></tr>
+                            <tr><td><strong>Allowed Extensions:</strong></td><td>${settings.file_storage.allowed_extensions.join(', ')}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-scanner text-warning"></i> Scanner</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Poll Interval:</strong></td><td>${settings.scanner.poll_interval}ms</td></tr>
+                            <tr><td><strong>Timeout:</strong></td><td>${settings.scanner.timeout}ms</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-globe text-info"></i> Web Interface</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Title:</strong></td><td>${settings.web.title}</td></tr>
+                            <tr><td><strong>Description:</strong></td><td>${settings.web.description}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-list text-secondary"></i> Logging</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Level:</strong></td><td>${settings.logging.level}</td></tr>
+                            <tr><td><strong>Format:</strong></td><td>${settings.logging.format}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-database text-danger"></i> DICOM Configuration</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>AE Title:</strong></td><td>${settings.dicom.ae_title}</td></tr>
+                            <tr><td><strong>Remote Host:</strong></td><td>${settings.dicom.remote_host}</td></tr>
+                            <tr><td><strong>FindSCU Port:</strong></td><td>${settings.dicom.findscu_port}</td></tr>
+                            <tr><td><strong>StoreSCU Port:</strong></td><td>${settings.dicom.storescu_port}</td></tr>
+                            <tr><td><strong>Remote AE Title:</strong></td><td>${settings.dicom.remote_ae_title}</td></tr>
+                            <tr><td><strong>DCMTK Path:</strong></td><td>${settings.dicom.dcmtk_path}</td></tr>
+                            <tr><td><strong>Station Name:</strong></td><td>${settings.dicom.station_name}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Note:</strong> These settings are loaded from environment variables and the .env file. 
+                    To modify these settings, please update your .env file and restart the application.
+                </div>
+            `;
+            
+            container.innerHTML = html;
         }
 
         // Enter key handlers for search fields

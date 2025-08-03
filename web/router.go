@@ -68,6 +68,8 @@ func (r *Router) SetupRoutes() {
 		// DICOM endpoints
 		api.GET("/dicom/search", r.searchPatients)
 		api.POST("/dicom/send", r.sendToPacs)
+		// Settings endpoint
+		api.GET("/settings", r.getSettings)
 	}
 
 	// Web routes
@@ -321,6 +323,43 @@ func (r *Router) sendToPacs(c *gin.Context) {
 		"progress": progress,
 		"success":  successCount,
 		"total":    len(progress),
+	})
+}
+
+func (r *Router) getSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"app": gin.H{
+			"name":    r.config.AppName,
+			"version": r.config.AppVersion,
+			"port":    r.config.AppPort,
+			"host":    r.config.AppHost,
+		},
+		"file_storage": gin.H{
+			"temp_files_dir":     r.config.TempFilesDir,
+			"max_file_size":      r.config.MaxFileSize,
+			"allowed_extensions": r.config.AllowedExtensions,
+		},
+		"scanner": gin.H{
+			"poll_interval": r.config.ScannerPollInterval,
+			"timeout":       r.config.ScannerTimeout,
+		},
+		"web": gin.H{
+			"title":       r.config.WebTitle,
+			"description": r.config.WebDescription,
+		},
+		"logging": gin.H{
+			"level":  r.config.LogLevel,
+			"format": r.config.LogFormat,
+		},
+		"dicom": gin.H{
+			"ae_title":        r.config.DicomAETitle,
+			"remote_host":     r.config.DicomRemoteHost,
+			"findscu_port":    r.config.DicomFindscuPort,
+			"storescu_port":   r.config.DicomStorescuPort,
+			"remote_ae_title": r.config.DicomRemoteAETitle,
+			"dcmtk_path":      r.config.DcmtkPath,
+			"station_name":    r.config.DicomStationName,
+		},
 	})
 }
 
