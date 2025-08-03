@@ -161,11 +161,7 @@
                                         <i class="fas fa-search"></i> Search
                                     </button>
                                 </div>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="document-creator" class="form-label">Dokument Ersteller:</label>
-                                <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
-                            </div>
+                            </div>                            
                         </div>
 
                         <!-- Search Results Table -->
@@ -179,8 +175,7 @@
                                                 <th>Patient ID</th>
                                                 <th>Name</th>
                                                 <th>Birth Date</th>
-                                                <th>Gender</th>
-                                                <th>Study Date</th>
+                                                <th>Gender</th>                                                
                                             </tr>
                                         </thead>
                                         <tbody id="pacs-results-body">
@@ -191,12 +186,18 @@
                             </div>
                         </div>
 
-                        <!-- Send Button -->
-                        <div class="row">
-                            <div class="col-12">
-                                <button class="btn btn-success btn-lg" onclick="sendToPacs()">
-                                    <i class="fas fa-paper-plane"></i> An PACs senden
-                                </button>
+                        <!-- Send Button --> 
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="document-creator" class="form-label">Dokument Ersteller:</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
+                                        <button class="btn btn-success" onclick="sendToPacs()">
+                                            <i class="fas fa-paper-plane"></i> An PACs senden
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
