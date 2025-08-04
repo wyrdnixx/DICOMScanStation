@@ -352,13 +352,14 @@ func (r *Router) getSettings(c *gin.Context) {
 			"format": r.config.LogFormat,
 		},
 		"dicom": gin.H{
-			"ae_title":        r.config.DicomAETitle,
-			"remote_host":     r.config.DicomRemoteHost,
-			"findscu_port":    r.config.DicomFindscuPort,
-			"storescu_port":   r.config.DicomStorescuPort,
-			"remote_ae_title": r.config.DicomRemoteAETitle,
-			"dcmtk_path":      r.config.DcmtkPath,
-			"station_name":    r.config.DicomStationName,
+			"local_ae_title": r.config.DicomLocalAETitle,
+			"query_ae_title": r.config.DicomQueryAETitle,
+			"store_ae_title": r.config.DicomStoreAETitle,
+			"remote_host":    r.config.DicomRemoteHost,
+			"findscu_port":   r.config.DicomFindscuPort,
+			"storescu_port":  r.config.DicomStorescuPort,
+			"dcmtk_path":     r.config.DcmtkPath,
+			"station_name":   r.config.DicomStationName,
 		},
 	})
 }

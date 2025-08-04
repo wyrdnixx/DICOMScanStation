@@ -66,10 +66,10 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 		if searchType == "birthdate" {
 			cmd = exec.Command(
 				ds.config.DcmtkPath+"/findscu",
-				"-v",           // Verbose output
-				"-S",           // Enable searching
-				"-aet", "AET1", // Calling AE Title (use AET1 as it works)
-				"-aec", ds.config.DicomRemoteAETitle, // Called AE Title
+				"-v",                                // Verbose output
+				"-S",                                // Enable searching
+				"-aet", ds.config.DicomLocalAETitle, // Local AE Title (calling)
+				"-aec", ds.config.DicomQueryAETitle, // Remote AE Title for Query operations
 				"-k", "QueryRetrieveLevel=PATIENT", // Query level
 				"-k", "PatientName", // Request Patient Name
 				"-k", "PatientID", // Request Patient ID
@@ -82,10 +82,10 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 			// Name search
 			cmd = exec.Command(
 				ds.config.DcmtkPath+"/findscu",
-				"-v",           // Verbose output
-				"-S",           // Enable searching
-				"-aet", "AET1", // Calling AE Title (use AET1 as it works)
-				"-aec", ds.config.DicomRemoteAETitle, // Called AE Title
+				"-v",                                // Verbose output
+				"-S",                                // Enable searching
+				"-aet", ds.config.DicomLocalAETitle, // Local AE Title (calling)
+				"-aec", ds.config.DicomQueryAETitle, // Remote AE Title for Query operations
 				"-k", "QueryRetrieveLevel=PATIENT", // Query level
 				"-k", fmt.Sprintf("PatientName=%s", pattern), // Patient name search with pattern
 				"-k", "PatientID", // Request Patient ID
@@ -149,8 +149,8 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 			ds.config.DcmtkPath+"/findscu",
 			"-v",
 			"-S",
-			"-aet", "AET1",
-			"-aec", ds.config.DicomRemoteAETitle,
+			"-aet", ds.config.DicomLocalAETitle,
+			"-aec", ds.config.DicomQueryAETitle,
 			"-k", "QueryRetrieveLevel=PATIENT",
 			"-k", "PatientName=*",
 			ds.config.DicomRemoteHost,
@@ -516,8 +516,8 @@ func (ds *DicomService) sendDicomToPacs(dcmFile string) error {
 	// Run dcmsend command
 	cmd := exec.Command(
 		ds.config.DcmtkPath+"/dcmsend",
-		"-aet", ds.config.DicomAETitle,
-		"-aec", ds.config.DicomRemoteAETitle,
+		"-aet", ds.config.DicomLocalAETitle,
+		"-aec", ds.config.DicomStoreAETitle,
 		ds.config.DicomRemoteHost,
 		fmt.Sprintf("%d", ds.config.DicomStorescuPort),
 		dcmFile,

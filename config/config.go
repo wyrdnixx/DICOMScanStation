@@ -21,12 +21,13 @@ type Config struct {
 	LogLevel            string
 	LogFormat           string
 	// DICOM Configuration for dcmtk findscu
-	DicomAETitle       string
-	DicomRemoteHost    string
-	DicomFindscuPort   int
-	DicomStorescuPort  int
-	DicomRemoteAETitle string
-	DcmtkPath          string
+	DicomLocalAETitle string
+	DicomQueryAETitle string
+	DicomStoreAETitle string
+	DicomRemoteHost   string
+	DicomFindscuPort  int
+	DicomStorescuPort int
+	DcmtkPath         string
 	// DICOM Station Configuration
 	DicomStationName string
 }
@@ -47,12 +48,13 @@ func LoadConfig() *Config {
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		LogFormat:           getEnv("LOG_FORMAT", "json"),
 		// DICOM Configuration for dcmtk findscu
-		DicomAETitle:       getEnv("DICOM_AETITLE", "DICOMScanStation"),
-		DicomRemoteHost:    getEnv("DICOM_REMOTE_HOST", "localhost"),
-		DicomFindscuPort:   getEnvAsInt("DICOM_FINDSCU_PORT", 11112),
-		DicomStorescuPort:  getEnvAsInt("DICOM_STORESCU_PORT", 11113),
-		DicomRemoteAETitle: getEnv("DICOM_REMOTE_AETITLE", "ANY-SCP"),
-		DcmtkPath:          getEnv("DCMTK_PATH", "/usr/bin"),
+		DicomLocalAETitle: getEnv("DICOM_LOCAL_AETITLE", "DICOMScanStation"),
+		DicomQueryAETitle: getEnv("DICOM_QUERY_AETITLE", "DICOMScanStation"),
+		DicomStoreAETitle: getEnv("DICOM_STORE_AETITLE", "DICOMScanStation"),
+		DicomRemoteHost:   getEnv("DICOM_REMOTE_HOST", "localhost"),
+		DicomFindscuPort:  getEnvAsInt("DICOM_FINDSCU_PORT", 11112),
+		DicomStorescuPort: getEnvAsInt("DICOM_STORESCU_PORT", 11113),
+		DcmtkPath:         getEnv("DCMTK_PATH", "/usr/bin"),
 		// DICOM Station Configuration
 		DicomStationName: getEnv("DICOM_STATION_NAME", "DICOMScanStation"),
 	}
