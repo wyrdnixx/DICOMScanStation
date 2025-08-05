@@ -45,8 +45,45 @@ sudo apt-get install dcmtk
 
 ```
 
+### Install DICOMScanStation and setup Systemd Service (Ubuntu 24.04)
 
-### Install Go
+```
+dcmst@DICOMScanStation1:~$ cd /opt/
+dcmst@DICOMScanStation1:/opt$ sudo git clone https://github.com/wyrdnixx/DICOMScanStation
+
+dcmst@DICOMScanStation1:/opt$ sudo nano /etc/systemd/system/dicomstation.service
+
+---
+
+[Unit]
+Description=DICOMStation Web Service
+After=network.target
+
+[Service]
+ExecStart=/opt/DICOMScanStation/DICOMScanStation
+Restart=on-failure
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/DICOMScanStation
+Environment=ENV=production
+# Add other Environment=... lines if needed
+
+[Install]
+WantedBy=multi-user.target
+
+---
+
+sudo systemctl daemon-reexec      # Recommended on Ubuntu 24.04+
+sudo systemctl daemon-reload
+sudo systemctl enable dicomstation.service
+sudo systemctl start dicomstation.service
+
+
+```
+
+
+
+### Install Go -- only if you want to compile yourself
 ```bash
 # Download and install Go from https://golang.org/dl/
 # or use your distribution's package manager
