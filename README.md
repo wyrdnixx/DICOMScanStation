@@ -51,12 +51,13 @@ sudo apt-get install dcmtk
 dcmst@DICOMScanStation1:~$ cd /opt/
 dcmst@DICOMScanStation1:/opt$ sudo git clone https://github.com/wyrdnixx/DICOMScanStation
 
-dcmst@DICOMScanStation1:/opt$ sudo nano /etc/systemd/system/dicomstation.service
+dcmst@DICOMScanStation1:/opt$ sudo nano /etc/systemd/system/dicomscanstation.service
+// check executable ! DICOMScanStation for x86 / DICOMScanStation_ARM for ARM CPU like RaspberryPi
 
 ---
 
 [Unit]
-Description=DICOMStation Web Service
+Description=DICOMScanStation Web Service
 After=network.target
 
 [Service]
@@ -73,13 +74,31 @@ WantedBy=multi-user.target
 
 ---
 
+### Add user www-data to Sane Scanner group to allow access to scanner devices:
+
+```
+
+dcmst@DICOMScanStation1:/opt/DICOMScanStation$ sudo usermod -aG scanner www-data
+
+```
+
+
 sudo systemctl daemon-reexec      # Recommended on Ubuntu 24.04+
 sudo systemctl daemon-reload
-sudo systemctl enable dicomstation.service
-sudo systemctl start dicomstation.service
+sudo systemctl enable dicomscanstation.service
+sudo systemctl start dicomscanstation.service
+sudo systemctl status dicomscanstation.service
 
 
 ```
+
+### Access the webinterface
+
+http://<IP>:8081
+
+
+
+---
 
 
 
@@ -111,6 +130,10 @@ sudo systemctl start dicomstation.service
 4. **Build the application**
    ```bash
    go build -o DICOMScanStation
+
+   // compile for ARM CPUs
+   GOOS=linux GOARCH=arm GOARM=7 go build -o DICOMScanStation_ARM
+
    ```
 
 ## Configuration
