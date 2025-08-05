@@ -81,10 +81,10 @@ sudo apt-get install dcmtk
 The application uses environment variables for configuration. Copy `env.example` to `.env` and modify as needed:
 
 ```bash
-# Application Settings
+ DICOMScanStation Configuration
 APP_NAME=DICOMScanStation
 APP_VERSION=1.0.0
-APP_PORT=8080
+APP_PORT=8081
 APP_HOST=0.0.0.0
 
 # File Storage
@@ -103,6 +103,18 @@ WEB_DESCRIPTION=USB Document Scanner Web Interface
 # Logging
 LOG_LEVEL=info
 LOG_FORMAT=json
+
+# DICOM Configuration for dcmtk findscu
+DICOM_LOCAL_AETITLE=DICOMScanStation
+DICOM_QUERY_AETITLE=DICOM_QR_SCP
+DICOM_STORE_AETITLE=DICOM_STORAGE
+DICOM_REMOTE_HOST=PACS-Server.fqdn
+DICOM_FINDSCU_PORT=7840
+DICOM_STORESCU_PORT=7810
+DCMTK_PATH=/usr/bin
+
+# DICOM Station Configuration
+DICOM_STATION_NAME=DICOMScanStation 
 ```
 
 ## Usage
