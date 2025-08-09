@@ -1564,7 +1564,7 @@
             })
             .then(data => {
                 progressBar.style.width = '100%';
-                statusDiv.innerHTML = '<div class="alert alert-success">Files uploaded successfully!</div>';
+                statusDiv.innerHTML = '<div class="alert alert-success">Upload erstartet... bitte warten...</div>';
                 
                 showToast('success', 'Upload Complete', `${data.uploaded} files uploaded successfully`);
                 
