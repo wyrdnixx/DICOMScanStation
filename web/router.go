@@ -1,6 +1,8 @@
 package web
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -65,6 +67,7 @@ func (r *Router) SetupRoutes() {
 		api.POST("/scan", r.startScan)
 		api.GET("/files/:filename", r.getFile)
 		api.DELETE("/files/:filename", r.deleteFile)
+		api.POST("/files/upload", r.uploadFiles)
 		// DICOM endpoints
 		api.GET("/dicom/search", r.searchPatients)
 		api.POST("/dicom/send", r.sendToPacs)
@@ -176,6 +179,78 @@ func (r *Router) deleteFile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "File deleted successfully"})
+}
+
+func (r *Router) uploadFiles(c *gin.Context) {
+	// Parse multipart form
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil { // 32MB max
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form data"})
+		return
+	}
+
+	files := c.Request.MultipartForm.File["files"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No files provided"})
+		return
+	}
+
+	uploadedCount := 0
+	var errors []string
+
+	for _, fileHeader := range files {
+		// Check file size
+		if fileHeader.Size > r.config.MaxFileSize {
+			errors = append(errors, fmt.Sprintf("File %s exceeds maximum size limit", fileHeader.Filename))
+			continue
+		}
+
+		// Check file extension
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if !r.isAllowedExtension(ext) {
+			errors = append(errors, fmt.Sprintf("File %s has unsupported extension", fileHeader.Filename))
+			continue
+		}
+
+		// Open the uploaded file
+		file, err := fileHeader.Open()
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Failed to open file %s: %v", fileHeader.Filename, err))
+			continue
+		}
+		defer file.Close()
+
+		// Create destination file
+		destPath := filepath.Join(r.config.TempFilesDir, fileHeader.Filename)
+		destFile, err := os.Create(destPath)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Failed to create file %s: %v", fileHeader.Filename, err))
+			continue
+		}
+		defer destFile.Close()
+
+		// Copy file content
+		if _, err := io.Copy(destFile, file); err != nil {
+			errors = append(errors, fmt.Sprintf("Failed to save file %s: %v", fileHeader.Filename, err))
+			continue
+		}
+
+		uploadedCount++
+		r.logger.Infof("Uploaded file: %s", fileHeader.Filename)
+	}
+
+	if len(errors) > 0 {
+		c.JSON(http.StatusPartialContent, gin.H{
+			"uploaded": uploadedCount,
+			"errors":   errors,
+			"message":  fmt.Sprintf("Uploaded %d files with %d errors", uploadedCount, len(errors)),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"uploaded": uploadedCount,
+		"message":  fmt.Sprintf("Successfully uploaded %d files", uploadedCount),
+	})
 }
 
 func (r *Router) indexPage(c *gin.Context) {
