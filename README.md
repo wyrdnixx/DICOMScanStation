@@ -129,6 +129,7 @@ http://<IP>:8081
 
 4. **Build the application**
    ```bash
+   // compile for x86/x64 CPUs
    go build -o DICOMScanStation
 
    // compile for ARM CPUs

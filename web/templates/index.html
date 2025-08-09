@@ -214,12 +214,18 @@
                             <div class="row">
                                 <div class="col-md-6">
                                     <label for="document-creator" class="form-label">Dokument Ersteller:</label>
-                                    <div class="input-group">
-                                                                                <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
-                                        <button class="btn btn-success" id="send-to-pacs-btn" onclick="sendToPacs()" disabled>
-                                            <i class="fas fa-paper-plane"></i> An PACs senden
-                                        </button>
-                                    </div>
+                                    <input type="text" class="form-control" id="document-creator" placeholder="Enter document creator name...">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="description" class="form-label">Beschreibung:</label>
+                                    <input type="text" class="form-control" id="description" placeholder="Enter study description...">
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12 text-center">
+                                    <button class="btn btn-success" id="send-to-pacs-btn" onclick="sendToPacs()" disabled>
+                                        <i class="fas fa-paper-plane"></i> An PACs senden
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -653,10 +659,14 @@
         function updateSendButtonState() {
             const sendButton = document.getElementById('send-to-pacs-btn');
             const selectedPatient = document.querySelector('.pacs-radio:checked');
+            const documentCreator = document.getElementById('document-creator').value.trim();
+            const description = document.getElementById('description').value.trim();
             const hasFiles = currentFiles && currentFiles.length > 0;
             const hasPatient = selectedPatient !== null;
+            const hasDocumentCreator = documentCreator !== '';
+            const hasDescription = description !== '';
             
-            if (hasFiles && hasPatient) {
+            if (hasFiles && hasPatient && hasDocumentCreator && hasDescription) {
                 sendButton.disabled = false;
                 sendButton.classList.remove('btn-secondary');
                 sendButton.classList.add('btn-success');
@@ -971,6 +981,9 @@
             // Clear document creator field
             document.getElementById('document-creator').value = '';
             
+            // Clear description field
+            document.getElementById('description').value = '';
+            
             // Clear search results table
             const tbody = document.getElementById('pacs-results-body');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No patients found</td></tr>';
@@ -1023,6 +1036,7 @@
         function sendToPacs() {
             const selectedPatientRadio = document.querySelector('.pacs-radio:checked');
             const documentCreator = document.getElementById('document-creator').value.trim();
+            const description = document.getElementById('description').value.trim();
 
             if (!selectedPatientRadio) {
                 showToast('warning', 'No Selection', 'Please select a patient');
@@ -1031,6 +1045,11 @@
 
             if (!documentCreator) {
                 showToast('warning', 'Missing Information', 'Please enter the document creator name');
+                return;
+            }
+
+            if (!description) {
+                showToast('warning', 'Missing Information', 'Please enter the study description');
                 return;
             }
 
@@ -1058,6 +1077,7 @@
                 <strong>Birth Date:</strong> ${selectedPatient.birthDate}<br>
                 <strong>Gender:</strong> ${selectedPatient.gender}<br>
                 <strong>Document Creator:</strong> ${documentCreator}<br>
+                <strong>Study Description:</strong> ${description}<br>
                 <strong>Institution Name:</strong> ${documentCreator}<br>
                 <strong>Files to Process:</strong> ${currentFiles.length} scanned document(s)<br><br>
                 <strong>Process:</strong><br>
@@ -1091,6 +1111,7 @@
                         body: JSON.stringify({
                             patientIds: [selectedPatient.patientId],
                             documentCreator: documentCreator,
+                            description: description,
                             selectedPatient: selectedPatient
                         })
                     })
@@ -1345,6 +1366,18 @@
                         searchPacsByBirthdate();
                     }
                 });
+            }
+
+            // Add input event listeners for document creator and description fields
+            const documentCreatorField = document.getElementById('document-creator');
+            const descriptionField = document.getElementById('description');
+
+            if (documentCreatorField) {
+                documentCreatorField.addEventListener('input', updateSendButtonState);
+            }
+
+            if (descriptionField) {
+                descriptionField.addEventListener('input', updateSendButtonState);
             }
 
             // Add keyboard navigation for image modal

@@ -273,11 +273,12 @@ func (r *Router) sendToPacs(c *gin.Context) {
 	var req struct {
 		PatientIDs      []string          `json:"patientIds" binding:"required"`
 		DocumentCreator string            `json:"documentCreator" binding:"required"`
+		Description     string            `json:"description" binding:"required"`
 		SelectedPatient dicom.PatientInfo `json:"selectedPatient" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Patient IDs, document creator, and selected patient are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Patient IDs, document creator, description, and selected patient are required"})
 		return
 	}
 
@@ -301,7 +302,7 @@ func (r *Router) sendToPacs(c *gin.Context) {
 
 	r.logger.Infof("Sending %d files to patient: %+v", len(filePaths), req.SelectedPatient)
 
-	progress, err := r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, filePaths, req.SelectedPatient)
+	progress, err := r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, req.Description, filePaths, req.SelectedPatient)
 	if err != nil {
 		r.logger.Errorf("Failed to send to PACS: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
