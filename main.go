@@ -11,13 +11,14 @@ import (
 
 	"DICOMScanStation/config"
 	"DICOMScanStation/scanner"
+	"DICOMScanStation/syslog"
 	"DICOMScanStation/web"
 
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
 
-const APP_VERSION = "1.0.1"
+const APP_VERSION = "1.1.0"
 
 var (
 	logger *logrus.Logger
@@ -53,12 +54,16 @@ func main() {
 		logger.Fatalf("Failed to create temp directory: %v", err)
 	}
 
+	// Initialize syslog service
+	syslogService := syslog.NewSyslogService(cfg)
+	defer syslogService.Close()
+
 	// Initialize scanner manager
-	scannerManager := scanner.NewScannerManager(cfg)
+	scannerManager := scanner.NewScannerManager(cfg, syslogService)
 	go scannerManager.StartMonitoring()
 
 	// Initialize web server
-	router := setupRouter(scannerManager, cfg)
+	router := setupRouter(scannerManager, cfg, syslogService)
 
 	// Fetch GitHub release version in a separate goroutine
 	go func() {
@@ -75,8 +80,13 @@ func main() {
 	// Start server in a goroutine
 	go func() {
 		logger.Infof("Starting web server on %s:%s", cfg.AppHost, cfg.AppPort)
+
+		// Send syslog message that service started
+		syslogService.ServiceStarted(cfg.AppVersion, cfg.AppHost, cfg.AppPort)
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatalf("Failed to start server: %v", err)
+			syslogService.Error("system", "main.ListenAndServe", fmt.Sprintf("Failed to start server: %v", err))
 		}
 	}()
 
@@ -97,13 +107,17 @@ func main() {
 	// Shutdown server
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal("Server forced to shutdown:", err)
+		syslogService.Error("system", "main.Shutdown", fmt.Sprintf("Server forced to shutdown: %v", err))
+	} else {
+		// Send syslog message that service stopped normally
+		syslogService.ServiceStopped()
 	}
 
 	logger.Info("Server exited")
 }
 
-func setupRouter(scannerManager *scanner.ScannerManager, cfg *config.Config) *web.Router {
-	router := web.NewRouter(scannerManager, cfg)
+func setupRouter(scannerManager *scanner.ScannerManager, cfg *config.Config, syslogService *syslog.SyslogService) *web.Router {
+	router := web.NewRouter(scannerManager, cfg, syslogService)
 	router.SetupRoutes()
 	return router
 }

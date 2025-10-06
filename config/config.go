@@ -32,6 +32,8 @@ type Config struct {
 	DicomStationName string
 	// GitHub Repository
 	GitHubRepoURL string
+	// Syslog Configuration
+	SyslogServer string
 }
 
 func LoadConfig() *Config {
@@ -61,6 +63,8 @@ func LoadConfig() *Config {
 		DicomStationName: getEnv("DICOM_STATION_NAME", "DICOMScanStation"),
 		// GitHub Repository
 		GitHubRepoURL: getEnv("GITHUB_REPOSITORY_URL", "https://github.com/wyrdnixx/DICOMScanStation"),
+		// Syslog Configuration
+		SyslogServer: getEnv("SYSLOG_SERVER", ""),
 	}
 }
 

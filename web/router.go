@@ -11,6 +11,7 @@ import (
 	"DICOMScanStation/config"
 	"DICOMScanStation/dicom"
 	"DICOMScanStation/scanner"
+	"DICOMScanStation/syslog"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -20,12 +21,25 @@ type Router struct {
 	router         *gin.Engine
 	scannerManager *scanner.ScannerManager
 	dicomService   *dicom.DicomService
+	syslogService  *syslog.SyslogService
 	config         *config.Config
 	logger         *logrus.Logger
 }
 
-func NewRouter(sm *scanner.ScannerManager, cfg *config.Config) *Router {
+func NewRouter(sm *scanner.ScannerManager, cfg *config.Config, syslogSvc *syslog.SyslogService) *Router {
 	router := gin.Default()
+
+	// Initialize DICOM service
+	dicomService := dicom.NewDicomService(cfg, syslogSvc)
+
+	r := &Router{
+		router:         router,
+		scannerManager: sm,
+		dicomService:   dicomService,
+		syslogService:  syslogSvc,
+		config:         cfg,
+		logger:         logrus.New(),
+	}
 
 	// Set up CORS
 	router.Use(func(c *gin.Context) {
@@ -41,16 +55,18 @@ func NewRouter(sm *scanner.ScannerManager, cfg *config.Config) *Router {
 		c.Next()
 	})
 
-	// Initialize DICOM service
-	dicomService := dicom.NewDicomService(cfg)
+	// Middleware to log client connections (only for web interface, not API calls)
+	router.Use(func(c *gin.Context) {
+		// Only log non-API requests (web interface pages)
+		if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			clientIP := c.ClientIP()
+			endpoint := c.Request.URL.Path
+			r.syslogService.ClientConnected(clientIP, endpoint)
+		}
+		c.Next()
+	})
 
-	return &Router{
-		router:         router,
-		scannerManager: sm,
-		dicomService:   dicomService,
-		config:         cfg,
-		logger:         logrus.New(),
-	}
+	return r
 }
 
 func (r *Router) SetupRoutes() {
@@ -128,7 +144,7 @@ func (r *Router) startScan(c *gin.Context) {
 		return
 	}
 
-	filenames, err := r.scannerManager.ScanDocument(req.Device, req.Options)
+	filenames, err := r.scannerManager.ScanDocument(c.ClientIP(), req.Device, req.Options)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -333,9 +349,10 @@ func (r *Router) searchPatients(c *gin.Context) {
 
 	r.logger.Infof("Searching for patients with term: %s (type: %s)", searchTerm, searchType)
 
-	patients, err := r.dicomService.SearchPatients(searchTerm, searchType)
+	patients, err := r.dicomService.SearchPatients(c.ClientIP(), searchTerm, searchType)
 	if err != nil {
 		r.logger.Errorf("Patient search failed: %v", err)
+		r.syslogService.ErrorWithContext(c.ClientIP(), "Router.searchPatients", searchTerm, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -362,11 +379,13 @@ func (r *Router) sendToPacs(c *gin.Context) {
 	// Get list of scanned files
 	files, err := r.getFileList()
 	if err != nil {
+		r.syslogService.Error(c.ClientIP(), "Router.sendToPacs", "Failed to get file list: "+err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file list"})
 		return
 	}
 
 	if len(files) == 0 {
+		r.syslogService.Error(c.ClientIP(), "Router.sendToPacs", "No scanned files to send")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No scanned files to send"})
 		return
 	}
@@ -379,9 +398,10 @@ func (r *Router) sendToPacs(c *gin.Context) {
 
 	r.logger.Infof("Sending %d files to patient: %+v", len(filePaths), req.SelectedPatient)
 
-	progress, err := r.dicomService.SendToPacs(req.PatientIDs, req.DocumentCreator, req.Description, filePaths, req.SelectedPatient)
+	progress, err := r.dicomService.SendToPacs(c.ClientIP(), req.PatientIDs, req.DocumentCreator, req.Description, filePaths, req.SelectedPatient)
 	if err != nil {
 		r.logger.Errorf("Failed to send to PACS: %v", err)
+		r.syslogService.ErrorWithContext(c.ClientIP(), "Router.sendToPacs", req.SelectedPatient.PatientID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

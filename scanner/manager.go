@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"DICOMScanStation/config"
+	"DICOMScanStation/syslog"
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
@@ -39,24 +40,26 @@ type ScanOptions struct {
 }
 
 type ScannerManager struct {
-	config   *config.Config
-	logger   *logrus.Logger
-	scanners map[string]*ScannerInfo
-	mu       sync.RWMutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	stopChan chan struct{}
+	config        *config.Config
+	logger        *logrus.Logger
+	syslogService *syslog.SyslogService
+	scanners      map[string]*ScannerInfo
+	mu            sync.RWMutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	stopChan      chan struct{}
 }
 
-func NewScannerManager(cfg *config.Config) *ScannerManager {
+func NewScannerManager(cfg *config.Config, syslogSvc *syslog.SyslogService) *ScannerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ScannerManager{
-		config:   cfg,
-		logger:   logrus.New(),
-		scanners: make(map[string]*ScannerInfo),
-		ctx:      ctx,
-		cancel:   cancel,
-		stopChan: make(chan struct{}),
+		config:        cfg,
+		logger:        logrus.New(),
+		syslogService: syslogSvc,
+		scanners:      make(map[string]*ScannerInfo),
+		ctx:           ctx,
+		cancel:        cancel,
+		stopChan:      make(chan struct{}),
 	}
 }
 
@@ -192,16 +195,20 @@ func (sm *ScannerManager) GetConnectedScanners() []*ScannerInfo {
 	return connected
 }
 
-func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]string, error) {
+func (sm *ScannerManager) ScanDocument(clientIP string, device string, options *ScanOptions) ([]string, error) {
 	sm.mu.RLock()
 	scanner, exists := sm.scanners[device]
 	sm.mu.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("scanner device '%s' not found", device)
+		err := fmt.Errorf("scanner device '%s' not found", device)
+		sm.syslogService.Error(clientIP, "ScannerManager.ScanDocument", err.Error())
+		return nil, err
 	}
 	if !scanner.Connected {
-		return nil, fmt.Errorf("scanner '%s' is not connected", scanner.Name)
+		err := fmt.Errorf("scanner '%s' is not connected", scanner.Name)
+		sm.syslogService.Error(clientIP, "ScannerManager.ScanDocument", err.Error())
+		return nil, err
 	}
 
 	// Set default options if not provided
@@ -291,7 +298,9 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 		// Check if it's a timeout error
 		if ctx.Err() == context.DeadlineExceeded {
 			sm.logger.Errorf("Scan timeout after %v. This may be due to a large batch or scanner limitations.", timeout)
-			return nil, fmt.Errorf("scan timeout after %v. Consider scanning smaller batches or checking scanner settings", timeout)
+			err := fmt.Errorf("scan timeout after %v. Consider scanning smaller batches or checking scanner settings", timeout)
+			sm.syslogService.Error(clientIP, "ScannerManager.ScanDocument", err.Error())
+			return nil, err
 		}
 
 		// Check if it's a normal completion (document feeder out of documents)
@@ -302,7 +311,9 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 			// This is not an error, just normal completion
 		} else {
 			sm.logger.Errorf("Scan failed: %s \n %s", errorMsg, cmd.String())
-			return nil, fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
+			err := fmt.Errorf("scan failed: %s \n %s", errorMsg, cmd.String())
+			sm.syslogService.Error(clientIP, "ScannerManager.ScanDocument", err.Error())
+			return nil, err
 		}
 	}
 
@@ -384,7 +395,9 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	}
 
 	if len(filenames) == 0 {
-		return nil, fmt.Errorf("scan completed but no files were created")
+		err := fmt.Errorf("scan completed but no files were created")
+		sm.syslogService.Error(clientIP, "ScannerManager.ScanDocument", err.Error())
+		return nil, err
 	}
 
 	// Add header to each scanned image
@@ -414,6 +427,10 @@ func (sm *ScannerManager) ScanDocument(device string, options *ScanOptions) ([]s
 	}
 
 	sm.logger.Infof("Document scanned successfully: %d pages", len(filenames))
+
+	// Send syslog message for successful scan
+	sm.syslogService.ScanCompleted(clientIP, scanner.Name, len(filenames))
+
 	return filenames, nil
 }
 

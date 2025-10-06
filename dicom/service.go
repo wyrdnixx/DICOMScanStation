@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"DICOMScanStation/config"
+	"DICOMScanStation/syslog"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,19 +30,21 @@ type PatientInfo struct {
 type DicomService struct {
 	config         *config.Config
 	logger         *logrus.Logger
+	syslogService  *syslog.SyslogService
 	currentVersion string
 	versionError   string
 	versionMutex   sync.RWMutex
 }
 
-func NewDicomService(cfg *config.Config) *DicomService {
+func NewDicomService(cfg *config.Config, syslogSvc *syslog.SyslogService) *DicomService {
 	return &DicomService{
-		config: cfg,
-		logger: logrus.New(),
+		config:        cfg,
+		logger:        logrus.New(),
+		syslogService: syslogSvc,
 	}
 }
 
-func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]PatientInfo, error) {
+func (ds *DicomService) SearchPatients(clientIP string, searchTerm string, searchType string) ([]PatientInfo, error) {
 	ds.logger.Infof("DICOM service: Searching for patients with term: %s (type: %s)", searchTerm, searchType)
 
 	var searchPatterns []string
@@ -123,7 +126,9 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 			if strings.Contains(outputStr, "Association Request Failed") {
 				// Return the exact findscu error message
 				ds.logger.Errorf("DICOM service: findscu error: %s", outputStr)
-				return nil, fmt.Errorf("DICOM error: %s", strings.TrimSpace(outputStr))
+				errMsg := fmt.Sprintf("DICOM error: %s", strings.TrimSpace(outputStr))
+				ds.syslogService.Error(clientIP, "DicomService.SearchPatients", errMsg)
+				return nil, fmt.Errorf("%s", errMsg)
 			}
 
 			continue // Try next pattern
@@ -135,6 +140,7 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 		patients, err := ds.parseFindscuOutput(string(output))
 		if err != nil {
 			ds.logger.Debugf("DICOM service: Failed to parse output for pattern %s: %v", pattern, err)
+			ds.syslogService.ErrorWithContext(clientIP, "DicomService.SearchPatients", pattern, err.Error())
 			continue // Try next pattern
 		}
 
@@ -170,7 +176,9 @@ func (ds *DicomService) SearchPatients(searchTerm string, searchType string) ([]
 		_, testErr := testCmd.CombinedOutput()
 		if testErr != nil {
 			ds.logger.Errorf("DICOM service: Connection test failed: %v", testErr)
-			return nil, fmt.Errorf("unable to connect to DICOM server at %s:%d", ds.config.DicomRemoteHost, ds.config.DicomFindscuPort)
+			errMsg := fmt.Sprintf("unable to connect to DICOM server at %s:%d", ds.config.DicomRemoteHost, ds.config.DicomFindscuPort)
+			ds.syslogService.Error(clientIP, "DicomService.SearchPatients", errMsg)
+			return nil, fmt.Errorf("%s", errMsg)
 		}
 	}
 
@@ -283,7 +291,7 @@ func (ds *DicomService) generateStudyID() string {
 	return fmt.Sprintf("STUDY_%s_%s", timestamp, randomHex)
 }
 
-func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, description string, filePaths []string, selectedPatient PatientInfo) ([]FileProgress, error) {
+func (ds *DicomService) SendToPacs(clientIP string, patientIDs []string, documentCreator string, description string, filePaths []string, selectedPatient PatientInfo) ([]FileProgress, error) {
 	ds.logger.Infof("DICOM service: Starting PACs upload process")
 	ds.logger.Infof("DICOM service: Selected patient: %+v", selectedPatient)
 	ds.logger.Infof("DICOM service: Document creator: %s", documentCreator)
@@ -304,6 +312,7 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 	jpgFiles, err := ds.getJpgFilesFromTempDir()
 	if err != nil {
 		ds.logger.Errorf("DICOM service: Failed to get JPG files: %v", err)
+		ds.syslogService.Error(clientIP, "DicomService.SendToPacs", fmt.Sprintf("Failed to get JPG files: %v", err))
 		return nil, fmt.Errorf("failed to get JPG files: %v", err)
 	}
 
@@ -335,6 +344,7 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 		dcmFile, err := ds.convertJpgToDicom(jpgFile)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to convert %s to DICOM: %v", jpgFile, err)
+			ds.syslogService.ErrorWithContext(clientIP, "DicomService.convertJpgToDicom", filename, err.Error())
 			fileProgress.Status = "failed"
 			fileProgress.Message = fmt.Sprintf("Conversion failed: %v", err)
 			fileProgress.Progress = 0
@@ -353,6 +363,7 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 		err = ds.updateDicomWithPatientData(dcmFile, selectedPatient, documentCreator, description, studyID, studyInstanceUID, seriesInstanceUID, instanceNumber)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to update DICOM file %s: %v", dcmFile, err)
+			ds.syslogService.ErrorWithContext(clientIP, "DicomService.updateDicomWithPatientData", filename, err.Error())
 			fileProgress.Status = "failed"
 			fileProgress.Message = fmt.Sprintf("Update failed: %v", err)
 			fileProgress.Progress = 0
@@ -369,6 +380,7 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 		err = ds.sendDicomToPacs(dcmFile)
 		if err != nil {
 			ds.logger.Errorf("DICOM service: Failed to send %s to PACs: %v", dcmFile, err)
+			ds.syslogService.ErrorWithContext(clientIP, "DicomService.sendDicomToPacs", filename, err.Error())
 			fileProgress.Status = "failed"
 			fileProgress.Message = fmt.Sprintf("Upload failed: %v", err)
 			fileProgress.Progress = 0
@@ -399,6 +411,20 @@ func (ds *DicomService) SendToPacs(patientIDs []string, documentCreator string, 
 	}
 
 	ds.logger.Infof("DICOM service: PACs upload process completed")
+
+	// Count successful uploads
+	successCount := 0
+	for _, p := range progress {
+		if p.Status == "completed" {
+			successCount++
+		}
+	}
+
+	// Send syslog message for successful DICOM send
+	if successCount > 0 {
+		ds.syslogService.DicomSendCompleted(clientIP, selectedPatient.Name, selectedPatient.PatientID, successCount)
+	}
+
 	return progress, nil
 }
 
