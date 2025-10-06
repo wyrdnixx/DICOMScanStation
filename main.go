@@ -13,10 +13,11 @@ import (
 	"DICOMScanStation/scanner"
 	"DICOMScanStation/web"
 
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
+
+const APP_VERSION = "1.0.1"
 
 var (
 	logger *logrus.Logger
@@ -37,6 +38,9 @@ func main() {
 	// Load configuration
 	cfg = config.LoadConfig()
 
+	// Set hardcoded version
+	cfg.AppVersion = APP_VERSION
+
 	// Set log level
 	if level, err := logrus.ParseLevel(cfg.LogLevel); err == nil {
 		logger.SetLevel(level)
@@ -56,10 +60,16 @@ func main() {
 	// Initialize web server
 	router := setupRouter(scannerManager, cfg)
 
+	// Fetch GitHub release version in a separate goroutine
+	go func() {
+		dicomService := router.GetDicomService()
+		dicomService.FetchGitHubVersion()
+	}()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("%s:%s", cfg.AppHost, cfg.AppPort),
-		Handler: router,
+		Handler: router.GetEngine(),
 	}
 
 	// Start server in a goroutine
@@ -92,8 +102,8 @@ func main() {
 	logger.Info("Server exited")
 }
 
-func setupRouter(scannerManager *scanner.ScannerManager, cfg *config.Config) *gin.Engine {
+func setupRouter(scannerManager *scanner.ScannerManager, cfg *config.Config) *web.Router {
 	router := web.NewRouter(scannerManager, cfg)
 	router.SetupRoutes()
-	return router.GetEngine()
+	return router
 }

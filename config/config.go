@@ -30,6 +30,8 @@ type Config struct {
 	DcmtkPath         string
 	// DICOM Station Configuration
 	DicomStationName string
+	// GitHub Repository
+	GitHubRepoURL string
 }
 
 func LoadConfig() *Config {
@@ -57,6 +59,8 @@ func LoadConfig() *Config {
 		DcmtkPath:         getEnv("DCMTK_PATH", "/usr/bin"),
 		// DICOM Station Configuration
 		DicomStationName: getEnv("DICOM_STATION_NAME", "DICOMScanStation"),
+		// GitHub Repository
+		GitHubRepoURL: getEnv("GITHUB_REPOSITORY_URL", "https://github.com/wyrdnixx/DICOMScanStation"),
 	}
 }
 

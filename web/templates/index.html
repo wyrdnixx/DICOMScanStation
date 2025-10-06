@@ -69,6 +69,16 @@
                     <div class="text-end">
                         <h5 class="mb-0">DICOMScanStation</h5>
                         <small class="text-light">(c) 2025 - Johannes Hehn - JoHeSoftware</small>
+                        <div class="mt-2">
+                            <small class="text-light">
+                                <i class="fas fa-tag"></i> App Version: <strong>{{.config.AppVersion}}</strong>
+                            </small>
+                        </div>
+                        <div id="version-display" class="mt-1">
+                            <small class="text-light">
+                                <i class="fas fa-code-branch"></i> GitHub Release: <span id="version-text">Loading...</span>
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -504,11 +514,35 @@
             loadScanners();
             loadFiles();
             updateSendButtonState();
+            loadVersion();
             
             // Refresh data every 5 seconds
             scannerRefreshInterval = setInterval(loadScanners, 5000);
             filesRefreshInterval = setInterval(loadFiles, 5000);
         });
+
+        function loadVersion() {
+            fetch('/api/version')
+                .then(response => response.json())
+                .then(data => {
+                    const versionText = document.getElementById('version-text');
+                    if (data.error && data.error !== '') {
+                        // Display error message
+                        versionText.innerHTML = `<span class="text-warning" title="${data.error}">Error fetching version</span>`;
+                    } else if (data.version && data.version !== '') {
+                        // Display version
+                        versionText.textContent = data.version;
+                    } else {
+                        // Still loading
+                        versionText.textContent = 'Loading...';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading version:', error);
+                    const versionText = document.getElementById('version-text');
+                    versionText.innerHTML = '<span class="text-warning" title="Failed to load version">N/A</span>';
+                });
+        }
 
         function loadScanners() {
             fetch('/api/scanners')

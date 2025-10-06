@@ -73,6 +73,8 @@ func (r *Router) SetupRoutes() {
 		api.POST("/dicom/send", r.sendToPacs)
 		// Settings endpoint
 		api.GET("/settings", r.getSettings)
+		// Version endpoint
+		api.GET("/version", r.getVersion)
 	}
 
 	// Web routes
@@ -440,8 +442,20 @@ func (r *Router) getSettings(c *gin.Context) {
 	})
 }
 
+func (r *Router) getVersion(c *gin.Context) {
+	version, versionError := r.dicomService.GetCurrentVersion()
+	c.JSON(http.StatusOK, gin.H{
+		"version": version,
+		"error":   versionError,
+	})
+}
+
 func (r *Router) GetEngine() *gin.Engine {
 	return r.router
+}
+
+func (r *Router) GetDicomService() *dicom.DicomService {
+	return r.dicomService
 }
 
 type FileInfo struct {

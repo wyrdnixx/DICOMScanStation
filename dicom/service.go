@@ -3,11 +3,14 @@ package dicom
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"DICOMScanStation/config"
@@ -24,8 +27,11 @@ type PatientInfo struct {
 }
 
 type DicomService struct {
-	config *config.Config
-	logger *logrus.Logger
+	config         *config.Config
+	logger         *logrus.Logger
+	currentVersion string
+	versionError   string
+	versionMutex   sync.RWMutex
 }
 
 func NewDicomService(cfg *config.Config) *DicomService {
@@ -552,4 +558,99 @@ func (ds *DicomService) cleanupFiles(jpgFile string, dcmFile string) error {
 
 	ds.logger.Debugf("DICOM service: Successfully cleaned up files: %s and %s", jpgFile, dcmFile)
 	return nil
+}
+
+// GitHubRelease represents the GitHub API release response
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+	Name    string `json:"name"`
+}
+
+// FetchGitHubVersion fetches the latest release version from GitHub
+func (ds *DicomService) FetchGitHubVersion() {
+	ds.logger.Info("Fetching latest release version from GitHub...")
+
+	// Extract owner and repo from the URL
+	repoURL := ds.config.GitHubRepoURL
+	// Remove trailing slash if present
+	repoURL = strings.TrimSuffix(repoURL, "/")
+	// Extract owner and repo name
+	parts := strings.Split(repoURL, "/")
+	if len(parts) < 2 {
+		ds.versionMutex.Lock()
+		ds.versionError = "Invalid repository URL"
+		ds.versionMutex.Unlock()
+		ds.logger.Errorf("Invalid GitHub repository URL: %s", repoURL)
+		return
+	}
+	owner := parts[len(parts)-2]
+	repo := parts[len(parts)-1]
+
+	// GitHub API endpoint for latest release
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+	ds.logger.Debugf("GitHub API URL: %s", apiURL)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// Create request
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		ds.versionMutex.Lock()
+		ds.versionError = "Failed to create request"
+		ds.versionMutex.Unlock()
+		ds.logger.Errorf("Failed to create GitHub API request: %v", err)
+		return
+	}
+
+	// Set User-Agent header (required by GitHub API)
+	req.Header.Set("User-Agent", "DICOMScanStation")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		ds.versionMutex.Lock()
+		ds.versionError = "Connection failed"
+		ds.versionMutex.Unlock()
+		ds.logger.Errorf("Failed to fetch GitHub release: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		ds.versionMutex.Lock()
+		ds.versionError = fmt.Sprintf("GitHub API error: %d", resp.StatusCode)
+		ds.versionMutex.Unlock()
+		ds.logger.Errorf("GitHub API returned status: %d", resp.StatusCode)
+		return
+	}
+
+	// Parse JSON response
+	var release GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		ds.versionMutex.Lock()
+		ds.versionError = "Failed to parse response"
+		ds.versionMutex.Unlock()
+		ds.logger.Errorf("Failed to parse GitHub release response: %v", err)
+		return
+	}
+
+	// Update version
+	ds.versionMutex.Lock()
+	ds.currentVersion = release.TagName
+	ds.versionError = ""
+	ds.versionMutex.Unlock()
+
+	ds.logger.Infof("Successfully fetched GitHub release version: %s", release.TagName)
+}
+
+// GetCurrentVersion returns the current GitHub release version
+func (ds *DicomService) GetCurrentVersion() (string, string) {
+	ds.versionMutex.RLock()
+	defer ds.versionMutex.RUnlock()
+	return ds.currentVersion, ds.versionError
 }
