@@ -275,6 +275,12 @@ func (r *Router) indexPage(c *gin.Context) {
 	scanners := r.scannerManager.GetScanners()
 	files, _ := r.getFileList()
 
+	// Trigger GitHub version check in background when user connects to web interface
+	go func() {
+		r.logger.Infof("Triggering GitHub version check for client: %s", c.ClientIP())
+		r.dicomService.FetchGitHubVersion()
+	}()
+
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"title":    r.config.WebTitle,
 		"scanners": scanners,

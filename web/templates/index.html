@@ -430,8 +430,41 @@
         </div>
     </div>
 
+    <!-- Update Available Modal -->
+    <div class="modal fade" id="updateAvailableModal" tabindex="-1" aria-labelledby="updateAvailableModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-warning" style="border-width: 3px;">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="updateAvailableModalLabel">
+                        <i class="fas fa-exclamation-triangle me-2"></i> Update Available
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>A new version is available!</strong>
+                    </div>
+                    <p><strong>Current Version:</strong> <span id="update-current-version" class="badge bg-secondary">{{.config.AppVersion}}</span></p>
+                    <p><strong>Available Version:</strong> <span id="update-available-version" class="badge bg-success"></span></p>
+                    <hr>
+                    <p class="mb-0">
+                        <i class="fas fa-download me-2"></i>
+                        Please visit the <a href="https://github.com/wyrdnixx/DICOMScanStation/releases/latest" target="_blank" class="fw-bold">GitHub Releases page</a> to download and install the latest version.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        <i class="fas fa-check"></i> OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Store the current app version from the server
+        const APP_VERSION = '{{.config.AppVersion}}';
         let currentFiles = [];
         let currentFilename = '';
         let currentImageIndex = -1;
@@ -532,6 +565,9 @@
                     } else if (data.version && data.version !== '') {
                         // Display version
                         versionText.textContent = data.version;
+                        
+                        // Compare versions and show update modal if they don't match
+                        checkForUpdate(APP_VERSION, data.version);
                     } else {
                         // Still loading
                         versionText.textContent = 'Loading...';
@@ -542,6 +578,31 @@
                     const versionText = document.getElementById('version-text');
                     versionText.innerHTML = '<span class="text-warning" title="Failed to load version">N/A</span>';
                 });
+        }
+
+        function checkForUpdate(currentVersion, githubVersion) {
+            // Normalize versions by removing 'v' prefix if present
+            const normalizedCurrent = currentVersion.replace(/^v/i, '').trim();
+            const normalizedGithub = githubVersion.replace(/^v/i, '').trim();
+            
+            // Compare versions
+            if (normalizedCurrent !== normalizedGithub) {
+                // Versions don't match - show update modal
+                console.log(`Update available: Current=${normalizedCurrent}, GitHub=${normalizedGithub}`);
+                showUpdateModal(normalizedCurrent, normalizedGithub);
+            } else {
+                console.log(`Version up to date: ${normalizedCurrent}`);
+            }
+        }
+
+        function showUpdateModal(currentVersion, availableVersion) {
+            // Update modal content
+            document.getElementById('update-current-version').textContent = currentVersion;
+            document.getElementById('update-available-version').textContent = availableVersion;
+            
+            // Show the modal
+            const updateModal = new bootstrap.Modal(document.getElementById('updateAvailableModal'));
+            updateModal.show();
         }
 
         function loadScanners() {
